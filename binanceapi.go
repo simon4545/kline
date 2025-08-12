@@ -86,7 +86,7 @@ func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit in
 
 	var query string
 	if interval == "5m" {
-		query = fmt.Sprintf(`SELECT symbol, open_time, open, high, low, close, volume, close_time FROM kline ORDER BY open_time desc limit %[1]d;`, limit)
+		query = fmt.Sprintf(`SELECT symbol, open_time, open, high, low, close, volume, close_time FROM kline WHERE symbol = ? ORDER BY open_time desc limit %[1]d;`, limit)
 	} else {
 		var bucketMs int64
 		switch interval {

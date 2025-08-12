@@ -118,7 +118,7 @@ func main() {
 
 func processSymbols(symbols []string, db *gorm.DB) error {
 	var g errgroup.Group
-	sem := make(chan struct{}, 2) // 限制并行 4 个
+	sem := make(chan struct{}, 3) // 限制并行 4 个
 
 	for _, sym := range symbols {
 		sym := sym // 避免闭包变量问题

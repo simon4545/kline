@@ -73,12 +73,6 @@ func main() {
 
 	db.AutoMigrate(&Kline{})
 
-	// 从 symbols.json 读取 symbols
-	symbols, err := loadSymbolsFromFile("symbols.json")
-	if err != nil {
-		log.Fatalf("读取 symbols.json 失败: %v", err)
-	}
-
 	// 启动 HTTP 服务
 	go func() {
 		http.HandleFunc("/klines", handleKlineQuery(db))
@@ -107,6 +101,11 @@ func main() {
 	ticker := time.NewTicker(1 * time.Minute)
 	go func() {
 		for range ticker.C {
+			// 从 symbols.json 读取 symbols
+			symbols, err := loadSymbolsFromFile("symbols.json")
+			if err != nil {
+				log.Fatalf("读取 symbols.json 失败: %v", err)
+			}
 			if err := processSymbols(symbols, db); err != nil {
 				log.Println("部分任务失败:", err)
 			}

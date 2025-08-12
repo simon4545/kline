@@ -81,23 +81,27 @@ func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit in
 		limit = 200
 	}
 	if !slices.Contains([]string{"15m", "1h", "4h", "1d"}, interval) {
-		interval = "15m"
-	}
-	var bucketMs int64
-	switch interval {
-	case "15m":
-		bucketMs = 15 * 60 * 1000
-	case "1h":
-		bucketMs = 60 * 60 * 1000
-	case "4h":
-		bucketMs = 4 * 60 * 60 * 1000
-	case "1d":
-		bucketMs = 24 * 60 * 60 * 1000
-	default:
-		return nil, fmt.Errorf("unsupported interval: %s", interval)
+		interval = "5m"
 	}
 
-	query := fmt.Sprintf(`
+	var query string
+	if interval == "5m" {
+		query = fmt.Sprintf(`SELECT symbol, open_time, open, high, low, close, volume, close_time FROM kline ORDER BY open_time desc limit %[1]d;`, limit)
+	} else {
+		var bucketMs int64
+		switch interval {
+		case "15m":
+			bucketMs = 15 * 60 * 1000
+		case "1h":
+			bucketMs = 60 * 60 * 1000
+		case "4h":
+			bucketMs = 4 * 60 * 60 * 1000
+		case "1d":
+			bucketMs = 24 * 60 * 60 * 1000
+		default:
+			return nil, fmt.Errorf("unsupported interval: %s", interval)
+		}
+		query = fmt.Sprintf(`
 		WITH base AS (
 		SELECT symbol, open_time, open, high, low, close, volume, close_time, CAST(open_time / %[1]d AS INTEGER) * %[1]d AS bucket_start
 		FROM kline WHERE symbol = ?
@@ -117,7 +121,7 @@ func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit in
 		)
 		SELECT symbol, bucket_start AS open_time, open, high, low, close, volume, close_time FROM agg WHERE rn = 1 ORDER BY open_time desc limit %[2]d;
 	`, bucketMs, limit)
-
+	}
 	rows, err := db.Raw(query, symbol).Rows()
 	if err != nil {
 		return nil, err

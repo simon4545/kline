@@ -76,6 +76,7 @@ func main() {
 	// 启动 HTTP 服务
 	go func() {
 		http.HandleFunc("/klines", handleKlineQuery(db))
+		http.HandleFunc("/symbols", handleSymbols())
 		log.Println("HTTP server started on :3000")
 		if err := http.ListenAndServe(":3000", nil); err != nil {
 			log.Fatal(err)

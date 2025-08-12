@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -12,6 +13,28 @@ import (
 
 	"gorm.io/gorm"
 )
+
+func handleSymbols() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 允许跨域
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			return // 处理预检请求
+		}
+		// 从 symbols.json 读取 symbols
+		symbols, err := loadSymbolsFromFile("symbols.json")
+		if err != nil {
+			log.Fatalf("读取 symbols.json 失败: %v", err)
+		}
+
+		// 不支持 gzip，直接返回
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(symbols)
+	}
+}
 
 // ================= HTTP 接口 =================
 func handleKlineQuery(db *gorm.DB) http.HandlerFunc {

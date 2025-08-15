@@ -3,3 +3,4 @@ kline
 .vscode
 *.db-journal
 .env
+cache_data

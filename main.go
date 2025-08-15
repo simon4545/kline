@@ -3,8 +3,10 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -47,6 +49,17 @@ func updateKlines(db *gorm.DB, symbol string) error {
 		}
 	}
 	return nil
+}
+
+var botToken, chatID string
+
+func init() {
+	// 读取 .env
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
+	}
+	botToken = os.Getenv("TELEGRAM_BOT_TOKEN")
+	chatID = os.Getenv("TELEGRAM_CHAT_ID")
 }
 
 // ================= 主程序 =================

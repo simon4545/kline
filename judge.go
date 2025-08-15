@@ -6,87 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"sync"
-	"time"
+	"slices"
 
 	"gorm.io/gorm"
 )
 
-// CacheItem 缓存项
-type CacheItem struct {
-	Value      interface{}
-	Expiration int64
-}
-
-// SimpleCache 简单的内存缓存
-type SimpleCache struct {
-	items map[string]CacheItem
-	mutex sync.RWMutex
-}
-
-// NewSimpleCache 创建新的缓存实例
-func NewSimpleCache() *SimpleCache {
-	cache := &SimpleCache{
-		items: make(map[string]CacheItem),
-	}
-	// 启动清理过期缓存的goroutine
-	go cache.cleanup()
-	return cache
-}
-
-// SetEx 设置键值对，过期时间以小时为单位
-func (c *SimpleCache) SetEx(key string, value interface{}, hours int64) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	
-	expiration := time.Now().Add(time.Hour * time.Duration(hours)).Unix()
-	c.items[key] = CacheItem{
-		Value:      value,
-		Expiration: expiration,
-	}
-}
-
-// Get 获取键对应的值
-func (c *SimpleCache) Get(key string) (interface{}, bool) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	
-	item, exists := c.items[key]
-	if !exists {
-		return nil, false
-	}
-	
-	// 检查是否过期
-	if time.Now().Unix() > item.Expiration {
-		return nil, false
-	}
-	
-	return item.Value, true
-}
-
-// cleanup 清理过期的缓存项
-func (c *SimpleCache) cleanup() {
-	ticker := time.NewTicker(time.Hour) // 每小时清理一次
-	defer ticker.Stop()
-	
-	for {
-		<-ticker.C
-		c.mutex.Lock()
-		
-		now := time.Now().Unix()
-		for key, item := range c.items {
-			if now > item.Expiration {
-				delete(c.items, key)
-			}
-		}
-		
-		c.mutex.Unlock()
-	}
-}
-
 // 全局缓存实例
-var cache = NewSimpleCache()
+var cache = NewLedisCache()
 
 // EMA 计算指数移动平均线
 func EMA(data []float64, period int) []float64 {
@@ -165,9 +91,6 @@ func IsBullishCross(macdLine []float64, signalLine []float64) bool {
 }
 
 func TelegramSendMessage(message string) error {
-	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	chatID := os.Getenv("TELEGRAM_CHAT_ID")
-
 	if botToken == "" || chatID == "" {
 		return nil
 	}
@@ -214,7 +137,7 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 	for _, symbol := range symbols {
 		// 从数据库获取K线数据
 		var klines []Kline
-		result := db.Where("symbol = ?", symbol).Order("open_time ASC").Limit(100).Find(&klines)
+		result := db.Where("symbol = ?", symbol).Order("open_time desc").Limit(100).Find(&klines)
 		if result.Error != nil {
 			log.Printf("获取 %s 的K线数据失败: %v", symbol, result.Error)
 			continue
@@ -230,7 +153,7 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 		for i, kline := range klines {
 			closingPrices[i] = kline.Close
 		}
-
+		slices.Reverse(closingPrices)
 		// 计算MACD
 		macdLine, signalLine, _ := MACD(closingPrices)
 

@@ -2,3 +2,4 @@ kline
 *.db
 .vscode
 *.db-journal
+.env

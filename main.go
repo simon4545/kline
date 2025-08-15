@@ -98,9 +98,11 @@ func main() {
 			}
 		}
 	}()
-	// 定时任务：每分钟更新一次
-	ticker := time.NewTicker(1 * time.Minute)
+
 	go func() {
+		// 定时任务：每分钟更新一次
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
 		for range ticker.C {
 			// 从 symbols.json 读取 symbols
 			symbols, err := loadSymbolsFromFile("symbols.json")
@@ -109,6 +111,18 @@ func main() {
 			}
 			if err := processSymbols(symbols, db); err != nil {
 				log.Println("部分任务失败:", err)
+			}
+		}
+	}()
+
+	// 定时任务：每5分钟检查一次MACD水上金叉
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			if err := CheckAllSymbolsMACDBullishCross(db); err != nil {
+				log.Printf("检查MACD水上金叉失败: %v", err)
 			}
 		}
 	}()

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/markcheno/go-talib"
+	"github.com/samber/lo"
 	"gorm.io/gorm"
 )
 
@@ -137,7 +139,7 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 	for _, symbol := range symbols {
 		// 从数据库获取K线数据
 		var klines []Kline
-		result := db.Where("symbol = ?", symbol).Order("open_time desc").Limit(100).Find(&klines)
+		result := db.Where("symbol = ?", symbol).Order("open_time desc").Limit(500).Find(&klines)
 		if result.Error != nil {
 			log.Printf("获取 %s 的K线数据失败: %v", symbol, result.Error)
 			continue
@@ -155,16 +157,26 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 		}
 		slices.Reverse(closingPrices)
 		// 计算MACD
-		macdLine, signalLine, _ := MACD(closingPrices)
+		emas := talib.Ema(closingPrices, 144)
+		emas = lo.Subset(emas, -5, 5)
+		result1 := lo.ReduceRight(emas, func(agg int, item float64, idx int) int {
+			if idx > 0 && item > emas[idx-1] {
+				return agg + 1
+			}
+			return agg
+		}, 0)
+		if result1 >= 4 {
+			macdLine, signalLine, _ := talib.Macd(closingPrices, 12, 26, 9)
 
-		// 检查是否出现水上金叉
-		if IsBullishCross(macdLine, signalLine) {
-			// 检查缓存中是否已经有这个代币的水上金叉记录
-			cacheKey := "bullish_cross_" + symbol
-			if _, exists := cache.Get(cacheKey); !exists {
-				// 如果缓存中没有记录，则添加到结果中，并设置4小时的缓存
-				bullishCrossSymbols = append(bullishCrossSymbols, symbol)
-				cache.SetEx(cacheKey, true, 4) // 设置4小时有效期
+			// 检查是否出现水上金叉
+			if IsBullishCross(macdLine, signalLine) {
+				// 检查缓存中是否已经有这个代币的水上金叉记录
+				cacheKey := "bullish_cross_" + symbol
+				if _, exists := cache.Get(cacheKey); !exists {
+					// 如果缓存中没有记录，则添加到结果中，并设置4小时的缓存
+					bullishCrossSymbols = append(bullishCrossSymbols, symbol)
+					cache.SetEx(cacheKey, true, 4) // 设置4小时有效期
+				}
 			}
 		}
 	}

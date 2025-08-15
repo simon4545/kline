@@ -77,6 +77,30 @@ func fetchBinanceKlines(symbol string, interval string, startTime, endTime int64
 
 // ================= 动态窗口聚合查询 =================
 func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit int) ([][]interface{}, error) {
+	var result []Kline
+	result = getAggKline(db, symbol, interval, limit)
+	// 按币安 API 返回格式组装（二维数组）
+	resp := make([][]interface{}, 0)
+	for _, k := range result {
+		resp = append(resp, []interface{}{
+			k.OpenTime,                    // 开盘时间 (ms)
+			fmt.Sprintf("%.8f", k.Open),   // 开盘价
+			fmt.Sprintf("%.8f", k.High),   // 最高价
+			fmt.Sprintf("%.8f", k.Low),    // 最低价
+			fmt.Sprintf("%.8f", k.Close),  // 收盘价
+			fmt.Sprintf("%.8f", k.Volume), // 成交量
+			k.CloseTime,                   // 收盘时间 (ms)
+			"0",                           // Quote asset volume
+			0,                             // Number of trades
+			"0",                           // Taker buy base asset volume
+			"0",                           // Taker buy quote asset volume
+			"0",                           // Ignore
+		})
+	}
+	slices.Reverse(resp)
+	return resp, nil
+}
+func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result []Kline) {
 	if limit == 0 {
 		limit = 200
 	}
@@ -99,7 +123,7 @@ func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit in
 		case "1d":
 			bucketMs = 24 * 60 * 60 * 1000
 		default:
-			return nil, fmt.Errorf("unsupported interval: %s", interval)
+			return
 		}
 		query = fmt.Sprintf(`
 		WITH base AS (
@@ -124,35 +148,16 @@ func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit in
 	}
 	rows, err := db.Raw(query, symbol).Rows()
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer rows.Close()
 
-	// var result []Kline
-	// 按币安 API 返回格式组装（二维数组）
-	resp := make([][]interface{}, 0)
 	for rows.Next() {
 		var k Kline
 		if err := rows.Scan(&k.Symbol, &k.OpenTime, &k.Open, &k.High, &k.Low, &k.Close, &k.Volume, &k.CloseTime); err != nil {
-			return nil, err
+			return
 		}
-		// result = append(result, k)
-
-		resp = append(resp, []interface{}{
-			k.OpenTime,                    // 开盘时间 (ms)
-			fmt.Sprintf("%.8f", k.Open),   // 开盘价
-			fmt.Sprintf("%.8f", k.High),   // 最高价
-			fmt.Sprintf("%.8f", k.Low),    // 最低价
-			fmt.Sprintf("%.8f", k.Close),  // 收盘价
-			fmt.Sprintf("%.8f", k.Volume), // 成交量
-			k.CloseTime,                   // 收盘时间 (ms)
-			"0",                           // Quote asset volume
-			0,                             // Number of trades
-			"0",                           // Taker buy base asset volume
-			"0",                           // Taker buy quote asset volume
-			"0",                           // Ignore
-		})
+		result = append(result, k)
 	}
-	slices.Reverse(resp)
-	return resp, nil
+	return
 }

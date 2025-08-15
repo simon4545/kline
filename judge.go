@@ -137,13 +137,7 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 
 	// 遍历所有代币
 	for _, symbol := range symbols {
-		// 从数据库获取K线数据
-		var klines []Kline
-		result := db.Where("symbol = ?", symbol).Order("open_time desc").Limit(500).Find(&klines)
-		if result.Error != nil {
-			log.Printf("获取 %s 的K线数据失败: %v", symbol, result.Error)
-			continue
-		}
+		klines := getAggKline(db, symbol, "15m", 300)
 
 		// 检查是否有足够的数据
 		if len(klines) < 26 { // 至少需要26个数据点来计算MACD
@@ -157,7 +151,7 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 		}
 		slices.Reverse(closingPrices)
 		// 计算MACD
-		emas := talib.Ema(closingPrices, 144)
+		emas := talib.Ema(closingPrices, 99)
 		emas = lo.Subset(emas, -5, 5)
 		result1 := lo.ReduceRight(emas, func(agg int, item float64, idx int) int {
 			if idx > 0 && item > emas[idx-1] {
@@ -183,7 +177,7 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 
 	// 如果有代币出现水上金叉，发送到Telegram
 	if len(bullishCrossSymbols) > 0 {
-		message := "以下代币在5分钟级别出现MACD水上金叉：\n"
+		message := "以下代币出现MACD水上金叉：\n"
 		for _, symbol := range bullishCrossSymbols {
 			message += "- " + symbol + "\n"
 		}

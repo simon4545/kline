@@ -86,7 +86,7 @@ func main() {
 	}
 
 	// 显式设置WAL模式
-	if err := db.Exec("PRAGMA journal_mode=WAL;").Error; err != nil {
+	if err := db.Exec("PRAGMA journal_mode=DELETE;").Error; err != nil {
 		log.Printf("设置WAL模式失败: %v", err)
 	} else {
 		log.Println("成功设置WAL模式")

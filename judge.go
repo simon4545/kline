@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/markcheno/go-talib"
 	"github.com/samber/lo"
@@ -143,7 +144,9 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 		if len(klines) < 26 { // 至少需要26个数据点来计算MACD
 			continue
 		}
-
+		klines = lo.Filter(klines, func(item Kline, index int) bool {
+			return item.CloseTime < time.Now().UnixMilli()
+		})
 		// 提取收盘价
 		closingPrices := make([]float64, len(klines))
 		for i, kline := range klines {

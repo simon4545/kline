@@ -23,8 +23,30 @@ type Kline struct {
 	CloseTime int64
 }
 
-func (Kline) TableName() string {
+// TableName 为Kline结构体动态生成表名
+func (k Kline) TableName() string {
+	if k.Symbol != "" {
+		return "kline_" + k.Symbol
+	}
 	return "kline"
+}
+
+// UnifiedKline 统一的K线数据模型，用于存储所有symbol的数据
+type UnifiedKline struct {
+	ID        uint   `gorm:"primaryKey"`
+	Symbol    string `gorm:"index:idx_symbol_open_time"`
+	OpenTime  int64  `gorm:"index:idx_symbol_open_time"`
+	Open      float64
+	High      float64
+	Low       float64
+	Close     float64
+	Volume    float64
+	CloseTime int64
+}
+
+// TableName 为UnifiedKline结构体指定表名
+func (k UnifiedKline) TableName() string {
+	return "klines_unified"
 }
 
 // ================= 币安 API 拉取 =================
@@ -100,7 +122,11 @@ func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit in
 	slices.Reverse(resp)
 	return resp, nil
 }
+
 func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result []Kline) {
+	// 创建一个带有symbol的Kline实例，用于获取表名
+	kline := Kline{Symbol: symbol}
+	
 	if limit == 0 {
 		limit = 200
 	}
@@ -110,7 +136,8 @@ func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result
 
 	var query string
 	if interval == "5m" {
-		query = fmt.Sprintf(`SELECT symbol, open_time, open, high, low, close, volume, close_time FROM kline WHERE symbol = ? ORDER BY open_time desc limit %[1]d;`, limit)
+		tableName := kline.TableName()
+		query = fmt.Sprintf(`SELECT symbol, open_time, open, high, low, close, volume, close_time FROM %s ORDER BY open_time desc limit %d;`, tableName, limit)
 	} else {
 		var bucketMs int64
 		switch interval {
@@ -125,10 +152,11 @@ func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result
 		default:
 			return
 		}
+		tableName := kline.TableName()
 		query = fmt.Sprintf(`
 		WITH base AS (
-		SELECT symbol, open_time, open, high, low, close, volume, close_time, CAST(open_time / %[1]d AS INTEGER) * %[1]d AS bucket_start
-		FROM kline WHERE symbol = ?
+		SELECT symbol, open_time, open, high, low, close, volume, close_time, CAST(open_time / %d AS INTEGER) * %d AS bucket_start
+		FROM %s
 		),
 		agg AS (
 		SELECT
@@ -143,10 +171,10 @@ func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result
 			ROW_NUMBER() OVER (PARTITION BY bucket_start ORDER BY open_time ASC) AS rn
 		FROM base
 		)
-		SELECT symbol, bucket_start AS open_time, open, high, low, close, volume, close_time FROM agg WHERE rn = 1 ORDER BY open_time desc limit %[2]d;
-	`, bucketMs, limit)
+		SELECT symbol, bucket_start AS open_time, open, high, low, close, volume, close_time FROM agg WHERE rn = 1 ORDER BY open_time desc limit %d;
+	`, bucketMs, bucketMs, tableName, limit)
 	}
-	rows, err := db.Raw(query, symbol).Rows()
+	rows, err := db.Raw(query).Rows()
 	if err != nil {
 		return
 	}

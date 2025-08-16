@@ -138,6 +138,15 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 
 	// 遍历所有代币
 	for _, symbol := range symbols {
+		// 创建一个带有symbol的Kline实例，用于获取表名
+		kline := Kline{Symbol: symbol}
+		
+		// 确保表存在
+		if err := db.Table(kline.TableName()).AutoMigrate(&Kline{}); err != nil {
+			log.Printf("自动迁移表 %s 失败: %v", kline.TableName(), err)
+			continue
+		}
+		
 		klines := getAggKline(db, symbol, "15m", 300)
 
 		// 检查是否有足够的数据

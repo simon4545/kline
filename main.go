@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,8 +16,16 @@ import (
 
 // ================= 数据更新逻辑 =================
 func updateKlines(db *gorm.DB, symbol string) error {
+	// 创建一个带有symbol的Kline实例，用于获取表名
+	kline := Kline{Symbol: symbol}
+
+	// 自动迁移表结构
+	if err := db.Table(kline.TableName()).AutoMigrate(&Kline{}); err != nil {
+		return err
+	}
+
 	var last Kline
-	res := db.Where("symbol = ?", symbol).Order("open_time DESC").Limit(1).Find(&last)
+	res := db.Table(kline.TableName()).Order("open_time DESC").Limit(1).Find(&last)
 
 	var startTime int64
 	var limitCount int = 99
@@ -39,13 +48,14 @@ func updateKlines(db *gorm.DB, symbol string) error {
 	}
 
 	for _, k := range klines {
+		k.Symbol = symbol // 确保kline记录包含symbol信息
 		var existing Kline
-		if err := db.Where("symbol = ? AND open_time = ?", k.Symbol, k.OpenTime).First(&existing).Error; err == nil {
+		if err := db.Table(kline.TableName()).Where("open_time = ?", k.OpenTime).First(&existing).Error; err == nil {
 			// 更新（收盘时间可能未完成）
-			db.Model(&existing).Updates(k)
+			db.Table(kline.TableName()).Model(&existing).Updates(k)
 		} else {
 			// 新增
-			db.Create(&k)
+			db.Table(kline.TableName()).Create(&k)
 		}
 	}
 	return nil
@@ -64,6 +74,32 @@ func init() {
 
 // ================= 主程序 =================
 func main() {
+	// 检查命令行参数
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		// 执行数据迁移
+		loc, err := time.LoadLocation("Asia/Shanghai")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		db, err := gorm.Open(sqlite.Open("klines.db"), &gorm.Config{
+			NowFunc: func() time.Time {
+				return time.Now().In(loc)
+			},
+			Logger: logger.Default.LogMode(logger.Silent),
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if err := migrateToUnifiedTable(db); err != nil {
+			log.Fatal("数据迁移失败:", err)
+		}
+
+		log.Println("数据迁移成功完成")
+		return
+	}
+
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
 		log.Fatal(err)
@@ -83,9 +119,23 @@ func main() {
 	var now time.Time
 	db.Raw("SELECT CURRENT_TIMESTAMP").Scan(&now)
 	log.Println("当前时间（东八区）:", now)
+	// 从 symbols.json 读取 symbols
+	symbols, err := loadSymbolsFromFile("symbols.json")
+	if err != nil {
+		return
+	}
 
-	db.AutoMigrate(&Kline{})
+	// 遍历所有代币
+	for _, symbol := range symbols {
+		// 创建一个带有symbol的Kline实例，用于获取表名
+		kline := Kline{Symbol: symbol}
 
+		// 确保表存在
+		if err := db.Table(kline.TableName()).AutoMigrate(&Kline{}); err != nil {
+			log.Printf("自动迁移表 %s 失败: %v", kline.TableName(), err)
+			continue
+		}
+	}
 	// 启动 HTTP 服务
 	go func() {
 		http.HandleFunc("/klines", handleKlineQuery(db))
@@ -93,22 +143,6 @@ func main() {
 		log.Println("HTTP server started on :3000")
 		if err := http.ListenAndServe(":3000", nil); err != nil {
 			log.Fatal(err)
-		}
-	}()
-	// 定时清理任务：每24小时执行一次
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-
-		for {
-			<-ticker.C
-			cutoff := time.Now().AddDate(0, -1, 0).UnixMilli()
-			res := db.Where("open_time < ?", cutoff).Delete(&Kline{})
-			if res.Error != nil {
-				log.Println("清理旧数据失败:", res.Error)
-			} else {
-				log.Printf("清理旧数据完成: %d 条 (open_time < %d)\n", res.RowsAffected, cutoff)
-			}
 		}
 	}()
 
@@ -165,4 +199,113 @@ func processSymbols(symbols []string, db *gorm.DB) error {
 	}
 
 	return g.Wait()
+}
+
+func clean(db *gorm.DB) {
+	// 定时清理任务：每24小时执行一次
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			<-ticker.C
+			// 从 symbols.json 读取 symbols
+			symbols, err := loadSymbolsFromFile("symbols.json")
+			if err != nil {
+				log.Printf("读取 symbols.json 失败: %v", err)
+				continue
+			}
+
+			cutoff := time.Now().AddDate(0, -1, 0).UnixMilli()
+			totalDeleted := int64(0)
+
+			// 为每个symbol清理旧数据
+			for _, symbol := range symbols {
+				kline := Kline{Symbol: symbol}
+				res := db.Table(kline.TableName()).Where("open_time < ?", cutoff).Delete(&Kline{})
+				if res.Error != nil {
+					log.Printf("清理 %s 旧数据失败: %v", symbol, res.Error)
+				} else {
+					totalDeleted += res.RowsAffected
+				}
+			}
+
+			log.Printf("清理旧数据完成: %d 条 (open_time < %d)\n", totalDeleted, cutoff)
+		}
+	}()
+}
+
+// migrateToUnifiedTable 将所有symbol的kline数据迁移到统一的表中
+func migrateToUnifiedTable(db *gorm.DB) error {
+	log.Println("开始数据迁移...")
+	
+	// 创建统一表
+	if err := db.AutoMigrate(&UnifiedKline{}); err != nil {
+		return fmt.Errorf("创建统一表失败: %v", err)
+	}
+	
+	// 从 symbols.json 读取 symbols
+	symbols, err := loadSymbolsFromFile("symbols.json")
+	if err != nil {
+		return fmt.Errorf("读取 symbols.json 失败: %v", err)
+	}
+	
+	// 统计总迁移记录数
+	totalMigrated := 0
+	
+	// 遍历所有symbol
+	for _, symbol := range symbols {
+		log.Printf("正在迁移 %s 的数据...", symbol)
+		
+		// 创建一个带有symbol的Kline实例，用于获取表名
+		kline := Kline{Symbol: symbol}
+		tableName := kline.TableName()
+		
+		// 检查表是否存在
+		if !db.Migrator().HasTable(tableName) {
+			log.Printf("表 %s 不存在，跳过", tableName)
+			continue
+		}
+		
+		// 从旧表中读取所有数据
+		var klines []Kline
+		if err := db.Table(tableName).Find(&klines).Error; err != nil {
+			log.Printf("读取表 %s 数据失败: %v", tableName, err)
+			continue
+		}
+		
+		log.Printf("从表 %s 读取到 %d 条记录", tableName, len(klines))
+		
+		// 如果没有数据，跳过
+		if len(klines) == 0 {
+			continue
+		}
+		
+		// 转换为UnifiedKline并插入到新表
+		unifiedKlines := make([]UnifiedKline, len(klines))
+		for i, k := range klines {
+			unifiedKlines[i] = UnifiedKline{
+				Symbol:    k.Symbol,
+				OpenTime:  k.OpenTime,
+				Open:      k.Open,
+				High:      k.High,
+				Low:       k.Low,
+				Close:     k.Close,
+				Volume:    k.Volume,
+				CloseTime: k.CloseTime,
+			}
+		}
+		
+		// 批量插入到新表
+		if err := db.Table("klines_unified").CreateInBatches(unifiedKlines, 1000).Error; err != nil {
+			log.Printf("插入数据到统一表失败: %v", err)
+			continue
+		}
+		
+		totalMigrated += len(klines)
+		log.Printf("成功迁移 %s 的 %d 条记录", symbol, len(klines))
+	}
+	
+	log.Printf("数据迁移完成，总共迁移 %d 条记录", totalMigrated)
+	return nil
 }

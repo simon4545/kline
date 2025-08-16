@@ -195,6 +195,6 @@ func createIndexForKlineTable(db *gorm.DB, tableName string) error {
 	indexName := fmt.Sprintf("idx_%s_symbol_open_time", tableName)
 
 	// 使用原生SQL创建联合索引
-	sql := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (symbol, open_time)", indexName, tableName)
+	sql := fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (symbol, open_time)", indexName, tableName)
 	return db.Exec(sql).Error
 }

@@ -103,8 +103,13 @@ func main() {
 		return
 	}
 	// for _, symbol := range symbols {
-	// 	db.Migrator().DropTable(fmt.Sprintf("kline_%s", symbol))
+	// 	db.Exec(fmt.Sprintf("DROP INDEX idx_kline_%s_symbol_open_time", symbol))
+	// 	// db.Migrator().DropIndex(fmt.Sprintf("idx_kline_%s_symbol_open_time", symbol), symbol)
 	// }
+	// // for _, symbol := range symbols {
+	// // 	db.Migrator().DropTable(fmt.Sprintf("kline_%s", symbol))
+	// // }
+	// return
 	// 遍历所有代币
 	for _, symbol := range symbols {
 		// 创建一个带有symbol的Kline实例，用于获取表名

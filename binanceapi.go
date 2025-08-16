@@ -12,9 +12,9 @@ import (
 
 // ================= 数据模型 =================
 type Kline struct {
-	ID        uint   `gorm:"primaryKey"`
-	Symbol    string `gorm:"index:idx_symbol_open_time"`
-	OpenTime  int64  `gorm:"index:idx_symbol_open_time"`
+	ID        uint `gorm:"primaryKey"`
+	Symbol    string
+	OpenTime  int64
 	Open      float64
 	High      float64
 	Low       float64
@@ -46,7 +46,7 @@ type UnifiedKline struct {
 
 // TableName 为UnifiedKline结构体指定表名
 func (k UnifiedKline) TableName() string {
-	return "klines_unified"
+	return "kline"
 }
 
 // ================= 币安 API 拉取 =================
@@ -99,8 +99,7 @@ func fetchBinanceKlines(symbol string, interval string, startTime, endTime int64
 
 // ================= 动态窗口聚合查询 =================
 func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit int) ([][]interface{}, error) {
-	var result []Kline
-	result = getAggKline(db, symbol, interval, limit)
+	var result = getAggKline(db, symbol, interval, limit)
 	// 按币安 API 返回格式组装（二维数组）
 	resp := make([][]interface{}, 0)
 	for _, k := range result {
@@ -126,7 +125,7 @@ func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit in
 func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result []Kline) {
 	// 创建一个带有symbol的Kline实例，用于获取表名
 	kline := Kline{Symbol: symbol}
-	
+
 	if limit == 0 {
 		limit = 200
 	}
@@ -188,4 +187,14 @@ func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result
 		result = append(result, k)
 	}
 	return
+}
+
+// createIndexForKlineTable 为Kline表动态创建联合索引
+func createIndexForKlineTable(db *gorm.DB, tableName string) error {
+	// 生成动态索引名，包含表名以确保唯一性
+	indexName := fmt.Sprintf("idx_%s_symbol_open_time", tableName)
+
+	// 使用原生SQL创建联合索引
+	sql := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (symbol, open_time)", indexName, tableName)
+	return db.Exec(sql).Error
 }

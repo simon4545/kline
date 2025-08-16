@@ -18,7 +18,7 @@ func setupTestDB() (*gorm.DB, error) {
 		log.Fatal(err)
 	}
 
-	db, err := gorm.Open(sqlite.Open("klines.db"), &gorm.Config{
+	db, err := gorm.Open(sqlite.Open("klines1.db"), &gorm.Config{
 		NowFunc: func() time.Time {
 			return time.Now().In(loc)
 		},

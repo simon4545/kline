@@ -4,7 +4,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -23,11 +22,6 @@ func handleSymbols() http.HandlerFunc {
 
 		if r.Method == http.MethodOptions {
 			return // 处理预检请求
-		}
-		// 从 symbols.json 读取 symbols
-		symbols, err := loadSymbolsFromFile("symbols.json")
-		if err != nil {
-			log.Fatalf("读取 symbols.json 失败: %v", err)
 		}
 
 		// 不支持 gzip，直接返回

@@ -4,3 +4,4 @@ kline
 *.db-journal
 .env
 cache_data
+klines.*

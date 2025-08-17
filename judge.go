@@ -147,9 +147,7 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 		if len(klines) < 26 { // 至少需要26个数据点来计算MACD
 			continue
 		}
-		klines = lo.Filter(klines, func(item Kline, index int) bool {
-			return item.CloseTime < time.Now().UnixMilli()
-		})
+		klines = lo.Filter(klines, func(item Kline, index int) bool { return item.CloseTime < time.Now().UnixMilli() })
 		// 提取收盘价
 		closingPrices := make([]float64, len(klines))
 		for i, kline := range klines {
@@ -157,7 +155,7 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 		}
 		slices.Reverse(closingPrices)
 		// 计算MACD
-		emas := talib.Ema(closingPrices, 99)
+		emas := talib.Ema(closingPrices, 144)
 		emas = lo.Subset(emas, -5, 5)
 		result1 := lo.ReduceRight(emas, func(agg int, item float64, idx int) int {
 			if idx > 0 && item > emas[idx-1] {

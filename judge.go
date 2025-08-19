@@ -162,15 +162,15 @@ func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 		if !ok {
 			continue
 		}
-
+		//整体曲线向上
 		if result1 >= 4 && lastprice > lastema {
 			macdLine, signalLine, macdHint := talib.Macd(closingPrices, 12, 26, 9)
-			count := lo.CountBy(lo.Subset(macdHint, -6, 5), func(i float64) bool {
+			count := lo.CountBy(lo.Subset(macdHint, -6, 6), func(i float64) bool {
 				return i < 0
 			})
-			fmt.Println(count)
+			fmt.Println(symbol, count)
 
-			// 检查是否出现水上金叉
+			// 检查是否出现水上金叉 并且之前的macd水下不超过5根
 			if IsBullishCross(macdLine, signalLine) && count < 5 {
 				// 检查缓存中是否已经有这个代币的水上金叉记录
 				cacheKey := "bullish_cross_" + symbol

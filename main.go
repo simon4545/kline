@@ -185,7 +185,7 @@ func processSymbols(symbols []string, db *gorm.DB) error {
 				log.Println("update error:", sym, err)
 				return err
 			}
-			log.Println("updated", sym)
+			// log.Println("updated", sym)
 			time.Sleep(time.Millisecond * 200)
 			return nil
 		})

@@ -12,6 +12,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/pretty66/websocketproxy"
 )
 
 var symbols []string
@@ -156,9 +158,32 @@ func main() {
 	// return
 	// // 启动 HTTP 服务
 	go func() {
+		// u, err := url.Parse("wss://fstream.binance.com/stream")
+		// if err != nil {
+		// 	log.Fatalln(err)
+		// }
+		// proxy := websocketproxy.NewProxy(u)
+		// proxy.Upgrader = &websocket.Upgrader{
+		// 	ReadBufferSize:  1024,
+		// 	WriteBufferSize: 1024,
+		// 	CheckOrigin: func(r *http.Request) bool {
+		// 		return true
+		// 	},
+		// }
+		wp, err := websocketproxy.NewProxy("wss://fstream.binance.com:443/stream", func(r *http.Request) error {
+			// 权限验证
+			// r.Header.Set("Cookie", "----")
+			// 伪装来源
+			// r.Header.Set("Origin", "http://82.157.123.54:9010")
+			return nil
+		})
+		if err != nil {
+			log.Fatal()
+		}
 		http.HandleFunc("/klines", handleKlineQuery(db))
 		http.HandleFunc("/symbols", handleSymbols())
 		http.HandleFunc("/hot", handleHotSymbols())
+		http.HandleFunc("/stream", wp.Proxy) //proxy.ServeHTTP
 		log.Println("HTTP server started on :3000")
 		if err := http.ListenAndServe(":3000", nil); err != nil {
 			log.Fatal(err)

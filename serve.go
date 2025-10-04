@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -12,6 +13,35 @@ import (
 
 	"gorm.io/gorm"
 )
+
+func gzipMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+
+			gz := gzip.NewWriter(w)
+			defer gz.Close()
+
+			wrapped := &gzipResponseWriter{Writer: gz, ResponseWriter: w}
+			next(wrapped, r)
+		} else {
+			next(w, r)
+		}
+	}
+}
+
+type gzipResponseWriter struct {
+	io.Writer
+	http.ResponseWriter
+}
+
+func (w *gzipResponseWriter) Write(data []byte) (int, error) {
+	return w.Writer.Write(data)
+}
+
+func (w *gzipResponseWriter) WriteHeader(statusCode int) {
+	w.ResponseWriter.WriteHeader(statusCode)
+}
 
 func handleSymbols() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

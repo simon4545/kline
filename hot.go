@@ -37,7 +37,7 @@ func (ps HotPairList) Len() int {
 }
 
 func (ps HotPairList) Less(i, j int) bool {
-	return ps[i].QuoteVolume > ps[j].QuoteVolume
+	return ps[i].Percent > ps[j].Percent
 }
 
 func (ps HotPairList) Swap(i, j int) {
@@ -55,17 +55,10 @@ func HotList() (symols HotPairList) {
 	request = gorequest.New()
 	url := "https://fapi.binance.com/fapi/v1/ticker/24hr"
 	_, responseBody, err := request.Get(url).End()
-	// response, err := http.Get(url)
 	if err != nil {
 		log.Fatal("Error making GET request:", err)
 	}
-	// defer response.Body.Close()
-	// bodyBytes, err := io.ReadAll(response.Body)
-	// if err != nil {
-	// 	log.Fatal("Error reading response body:", err)
-	// }
 
-	// responseBody := string(bodyBytes)
 	value := gjson.Parse(responseBody).Array()
 	for _, symbol := range value {
 		symbolCoin := symbol.Get("symbol").String()
@@ -76,14 +69,13 @@ func HotList() (symols HotPairList) {
 			quoteAsset := symbolCoin[len(symbolCoin)-4:]
 			if quoteAsset == "USDT" && !ContainsString(binanceExcludes, baseAsset) && !strings.HasSuffix(baseAsset, "DOWN") && !strings.HasSuffix(baseAsset, "UP") {
 				priceChangePercent := symbol.Get("priceChangePercent").Float()
-				quoteVolume := symbol.Get("quoteVolume").Float()
-				pair := HotPair{Symbol: baseAsset, LastPrice: lastPrice, QuoteVolume: quoteVolume, Percent: priceChangePercent}
+				pair := HotPair{Symbol: baseAsset, LastPrice: lastPrice, QuoteVolume: volume24h, Percent: priceChangePercent}
 				symols = append(symols, &pair)
 			}
 		}
 	}
 	sort.Sort(symols)
-	symols = symols[:40]
+	symols = symols[:35]
 	swg := sizedwaitgroup.New(4)
 	for _, s := range symols {
 		swg.Add()

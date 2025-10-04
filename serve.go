@@ -29,6 +29,24 @@ func handleSymbols() http.HandlerFunc {
 		json.NewEncoder(w).Encode(symbols)
 	}
 }
+func handleHotSymbols() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		js, err := json.Marshal(HotList())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			return // 处理预检请求
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(js)
+	}
+}
 
 // ================= HTTP 接口 =================
 func handleKlineQuery(db *gorm.DB) http.HandlerFunc {

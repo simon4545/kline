@@ -158,6 +158,7 @@ func main() {
 	go func() {
 		http.HandleFunc("/klines", handleKlineQuery(db))
 		http.HandleFunc("/symbols", handleSymbols())
+		http.HandleFunc("/hot", handleHotSymbols())
 		log.Println("HTTP server started on :3000")
 		if err := http.ListenAndServe(":3000", nil); err != nil {
 			log.Fatal(err)

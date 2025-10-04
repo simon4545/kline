@@ -16,30 +16,48 @@ import (
 
 var symbols []string
 
+func getLastOpenTime(db *gorm.DB, symbol string) int64 {
+	kline := Kline{Symbol: symbol}
+
+	var last Kline
+	res := db.Table(kline.TableName()).Order("open_time DESC").Limit(1).Find(&last)
+	if res.RowsAffected > 0 {
+		return last.OpenTime
+	} else {
+		return 0
+	}
+}
+
 // ================= 数据更新逻辑 =================
 func updateKlines(db *gorm.DB, symbol string) error {
 	// 创建一个带有symbol的Kline实例，用于获取表名
 	kline := Kline{Symbol: symbol}
 
 	var last Kline
-	res := db.Table(kline.TableName()).Order("open_time DESC").Limit(1).Find(&last)
+	var last_open_time = time.Now().Add(time.Hour * -24).UnixMilli()
+	res := db.Table(kline.TableName()).Where("open_time > ?", last_open_time).Order("open_time DESC").Limit(1).Find(&last)
 
 	var startTime int64
-	var limitCount int = 99
+	var limitCount int = 49
 	if res.RowsAffected == 0 {
-		limitCount = 499
-		// 没有数据，从当前时间回溯 99*5m
-		startTime = time.Now().Add(-time.Duration(2880*5) * time.Minute).UnixMilli()
-	} else {
-		// 有数据，从最新一条的时间开始拉取
-		if time.Since(time.UnixMilli(last.OpenTime)) >= 5*time.Minute {
+		limitCount = 999
+		// 没有数据，从当前时间回溯10天
+		dbLastOpenTime := getLastOpenTime(db, symbol)
+		if dbLastOpenTime > 0 {
 			startTime = last.OpenTime
 		} else {
-			return nil // 最新数据足够
+			startTime = time.Now().Add(-5000 * time.Hour).UnixMilli()
 		}
+	} else {
+		// 有数据，从最新一条的时间开始拉取
+		// if time.Since(time.UnixMilli(last.OpenTime)) >= 15*time.Minute {
+		startTime = last.OpenTime
+		// } else {
+		// return nil // 最新数据足够
+		// }
 	}
 
-	klines, err := fetchBinanceKlines(symbol, "5m", startTime, 0, limitCount)
+	klines, err := fetchBinanceKlines(symbol, "15m", startTime, 0, limitCount)
 	if err != nil {
 		return err
 	}
@@ -48,8 +66,10 @@ func updateKlines(db *gorm.DB, symbol string) error {
 		k.Symbol = symbol // 确保kline记录包含symbol信息
 		var existing Kline
 		if err := db.Table(kline.TableName()).Where("open_time = ?", k.OpenTime).First(&existing).Error; err == nil {
-			// 更新（收盘时间可能未完成）
-			db.Table(kline.TableName()).Model(&existing).Updates(k)
+			// 如果未收盘，则更新
+			if existing.CloseTime > time.Now().UnixMilli() {
+				db.Table(kline.TableName()).Model(&existing).Updates(k)
+			}
 		} else {
 			// 新增
 			db.Table(kline.TableName()).Create(&k)
@@ -146,9 +166,14 @@ func main() {
 
 	go func() {
 		// 定时任务：每分钟更新一次
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
+		// ticker := time.NewTicker(2 * time.Minute)
+		// defer ticker.Stop()
+		// for range ticker.C {
+		// 	if err := processSymbols(symbols, db); err != nil {
+		// 		log.Println("部分任务失败:", err)
+		// 	}
+		// }
+		for {
 			if err := processSymbols(symbols, db); err != nil {
 				log.Println("部分任务失败:", err)
 			}
@@ -185,8 +210,8 @@ func processSymbols(symbols []string, db *gorm.DB) error {
 				log.Println("update error:", sym, err)
 				return err
 			}
-			// log.Println("updated", sym)
-			time.Sleep(time.Millisecond * 200)
+			log.Println("updated", sym)
+			time.Sleep(time.Millisecond * 400)
 			return nil
 		})
 	}

@@ -130,18 +130,18 @@ func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result
 		limit = 200
 	}
 	if !slices.Contains([]string{"15m", "1h", "4h", "1d"}, interval) {
-		interval = "5m"
+		interval = "15m"
 	}
 
 	var query string
-	if interval == "5m" {
+	if interval == "15m" {
 		tableName := kline.TableName()
 		query = fmt.Sprintf(`SELECT symbol, open_time, open, high, low, close, volume, close_time FROM %s ORDER BY open_time desc limit %d;`, tableName, limit)
 	} else {
 		var bucketMs int64
 		switch interval {
-		case "15m":
-			bucketMs = 15 * 60 * 1000
+		// case "15m":
+		// bucketMs = 15 * 60 * 1000
 		case "1h":
 			bucketMs = 60 * 60 * 1000
 		case "4h":

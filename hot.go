@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/parnurzeal/gorequest"
 	"github.com/remeh/sizedwaitgroup"
@@ -64,7 +65,8 @@ func HotList() (symols HotPairList) {
 		symbolCoin := symbol.Get("symbol").String()
 		volume24h := symbol.Get("quoteVolume").Float()
 		lastPrice := symbol.Get("lastPrice").Float()
-		if volume24h > 5_000_000 && strings.Contains(symbolCoin, "USDT") {
+		closeTime := symbol.Get("closeTime").Int()
+		if closeTime > time.Now().Add(-1*time.Hour).UnixMilli() && volume24h > 5_000_000 && strings.Contains(symbolCoin, "USDT") {
 			baseAsset := symbolCoin[:len(symbolCoin)-4]
 			quoteAsset := symbolCoin[len(symbolCoin)-4:]
 			if quoteAsset == "USDT" && !ContainsString(binanceExcludes, baseAsset) && !strings.HasSuffix(baseAsset, "DOWN") && !strings.HasSuffix(baseAsset, "UP") {
@@ -75,7 +77,7 @@ func HotList() (symols HotPairList) {
 		}
 	}
 	sort.Sort(symols)
-	symols = symols[:35]
+	symols = symols[:30]
 	swg := sizedwaitgroup.New(4)
 	for _, s := range symols {
 		swg.Add()

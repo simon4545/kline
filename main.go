@@ -207,17 +207,18 @@ func main() {
 	}()
 
 	// 定时任务：每5分钟检查一次MACD水上金叉
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
+	// go func() {
+	// 	ticker := time.NewTicker(5 * time.Minute)
+	// 	defer ticker.Stop()
 
-		for range ticker.C {
-			if err := CheckAllSymbolsMACDBullishCross(db); err != nil {
-				log.Printf("检查MACD水上金叉失败: %v", err)
-			}
-		}
-	}()
+	// 	for range ticker.C {
 
+	// 		// if err := CheckAllSymbolsMACDBullishCross(db); err != nil {
+	// 		// 	log.Printf("检查MACD水上金叉失败: %v", err)
+	// 		// }
+	// 	}
+	// }()
+	clean(db)
 	select {}
 }
 
@@ -248,7 +249,7 @@ func processSymbols(symbols []string, db *gorm.DB) error {
 func clean(db *gorm.DB) {
 	// 定时清理任务：每24小时执行一次
 	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
+		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 
 		for {
@@ -260,7 +261,31 @@ func clean(db *gorm.DB) {
 				continue
 			}
 
-			cutoff := time.Now().AddDate(0, -1, 0).UnixMilli()
+			// 建立一个 map，方便快速判断
+			symbolSet := make(map[string]struct{})
+			for _, s := range symbols {
+				symbolSet["kline_"+s] = struct{}{}
+			}
+			// 2️⃣ 获取数据库中所有表名
+			var tables []string
+			err = db.Raw("SELECT name FROM sqlite_master WHERE type='table'").Scan(&tables).Error
+			if err != nil {
+				// 如果是 MySQL 可改为：db.Raw("SHOW TABLES").Scan(&tables)
+				log.Printf("获取数据库表名失败: %v", err)
+				continue
+			}
+
+			// 3️⃣ 删除不在 symbols.json 列表中的表
+			for _, table := range tables {
+				if _, ok := symbolSet[table]; !ok && table != "sqlite_sequence" {
+					log.Printf("删除表: %s", table)
+					if err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS `%s`", table)).Error; err != nil {
+						log.Printf("删除表 %s 失败: %v", table, err)
+					}
+				}
+			}
+
+			cutoff := time.Now().AddDate(0, -6, 0).UnixMilli()
 			totalDeleted := int64(0)
 
 			// 为每个symbol清理旧数据

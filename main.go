@@ -154,22 +154,8 @@ func main() {
 	// 	log.Fatal("数据迁移失败:", err)
 	// }
 
-	// log.Println("数据迁移成功完成")
-	// return
-	// // 启动 HTTP 服务
+	// 启动 HTTP 服务
 	go func() {
-		// u, err := url.Parse("wss://fstream.binance.com/stream")
-		// if err != nil {
-		// 	log.Fatalln(err)
-		// }
-		// proxy := websocketproxy.NewProxy(u)
-		// proxy.Upgrader = &websocket.Upgrader{
-		// 	ReadBufferSize:  1024,
-		// 	WriteBufferSize: 1024,
-		// 	CheckOrigin: func(r *http.Request) bool {
-		// 		return true
-		// 	},
-		// }
 		wp, err := websocketproxy.NewProxy("wss://fstream.binance.com:443/stream", func(r *http.Request) error {
 			// 权限验证
 			// r.Header.Set("Cookie", "----")

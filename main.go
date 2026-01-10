@@ -16,6 +16,8 @@ import (
 	"github.com/pretty66/websocketproxy"
 )
 
+// 全局缓存实例
+var cache = NewLedisCache()
 var symbols []string
 
 func getLastOpenTime(db *gorm.DB, symbol string) int64 {
@@ -204,6 +206,16 @@ func main() {
 	// 		// }
 	// 	}
 	// }()
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			if err := CheckAllSymbolsRSI(db); err != nil {
+				log.Printf("检查MACD水上金叉失败: %v", err)
+			}
+		}
+	}()
 	clean(db)
 	select {}
 }

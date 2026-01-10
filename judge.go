@@ -11,9 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// 全局缓存实例
-var cache = NewLedisCache()
-
 // CheckAllSymbolsMACDBullishCross 检查所有代币的MACD水上金叉
 func CheckAllSymbolsMACDBullishCross(db *gorm.DB) error {
 	// 存储出现水上金叉的代币

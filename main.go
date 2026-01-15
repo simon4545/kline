@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,7 +9,6 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"golang.org/x/sync/errgroup"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -38,27 +38,16 @@ func updateKlines(db *gorm.DB, symbol string) error {
 	kline := Kline{Symbol: symbol}
 
 	var last Kline
-	var last_open_time = time.Now().Add(time.Hour * -24).UnixMilli()
-	res := db.Table(kline.TableName()).Where("open_time > ?", last_open_time).Order("open_time DESC").Limit(1).Find(&last)
+	// var last_open_time = time.Now().Add(time.Hour * -24).UnixMilli()
+	res := db.Table(kline.TableName()).Order("open_time DESC").Limit(1).Find(&last)
 
 	var startTime int64
-	var limitCount int = 49
+	var limitCount int = 200
 	if res.RowsAffected == 0 {
 		limitCount = 999
-		// 没有数据，从当前时间回溯10天
-		dbLastOpenTime := getLastOpenTime(db, symbol)
-		if dbLastOpenTime > 0 {
-			startTime = last.OpenTime
-		} else {
-			startTime = time.Now().Add(-5000 * time.Hour).UnixMilli()
-		}
+		startTime = time.Now().Add(-5000 * 24 * time.Hour).UnixMilli()
 	} else {
-		// 有数据，从最新一条的时间开始拉取
-		// if time.Since(time.UnixMilli(last.OpenTime)) >= 15*time.Minute {
 		startTime = last.OpenTime
-		// } else {
-		// return nil // 最新数据足够
-		// }
 	}
 
 	klines, err := fetchBinanceKlines(symbol, "15m", startTime, 0, limitCount)
@@ -83,12 +72,16 @@ func updateKlines(db *gorm.DB, symbol string) error {
 }
 
 var botToken, chatID string
+var port *int
 
 func init() {
 	// 读取 .env
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
+	// 定义命令行参数 -port，默认值 3000
+	port = flag.Int("port", 3000, "服务监听端口号")
+	flag.Parse()
 	botToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	chatID = os.Getenv("TELEGRAM_CHAT_ID")
 }
@@ -172,8 +165,10 @@ func main() {
 		http.HandleFunc("/symbols", handleSymbols())
 		http.HandleFunc("/hot", handleHotSymbols())
 		http.HandleFunc("/stream", wp.Proxy) //proxy.ServeHTTP
-		log.Println("HTTP server started on :3000")
-		if err := http.ListenAndServe(":3000", nil); err != nil {
+		// 拼接地址
+		addr := fmt.Sprintf(":%d", *port)
+		log.Printf("HTTP server started on %s", addr)
+		if err := http.ListenAndServe(addr, nil); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -221,27 +216,27 @@ func main() {
 }
 
 func processSymbols(symbols []string, db *gorm.DB) error {
-	var g errgroup.Group
-	sem := make(chan struct{}, 3) // 限制并行 4 个
+	// var g errgroup.Group
+	// sem := make(chan struct{}, 3) // 限制并行 4 个
 
 	for _, sym := range symbols {
-		sym := sym // 避免闭包变量问题
+		// sym := sym // 避免闭包变量问题
 
-		g.Go(func() error {
-			sem <- struct{}{} // 占用一个并发槽
-			defer func() { <-sem }()
+		// g.Go(func() error {
+		// sem <- struct{}{} // 占用一个并发槽
+		// defer func() { <-sem }()
 
-			if err := updateKlines(db, sym); err != nil {
-				log.Println("update error:", sym, err)
-				return err
-			}
-			log.Println("updated", sym)
-			time.Sleep(time.Millisecond * 400)
-			return nil
-		})
+		if err := updateKlines(db, sym); err != nil {
+			log.Println("update error:", sym, err)
+			return err
+		}
+		log.Println("updated", sym)
+		time.Sleep(time.Millisecond * 400)
+		// return nil
+		// })
 	}
-
-	return g.Wait()
+	return nil
+	// return g.Wait()
 }
 
 func clean(db *gorm.DB) {

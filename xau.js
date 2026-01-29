@@ -35,7 +35,7 @@ async function checkFuturePrice() {
 
         const maxHigh = Math.max(...highs);
         // const minLow = Math.min(...lows);
-        const minLow=parseFloat(klines[klines.length-1][4]);
+        const minLow=parseFloat(klines[klines.length-1][3]);
         const amplitude = maxHigh - minLow;
 
         console.log(`[${new Date().toLocaleTimeString()}] 合约最高: ${maxHigh}, 最低: ${minLow}, 波幅: ${amplitude.toFixed(2)}`);
@@ -64,5 +64,5 @@ function sendTelegramMessage(text) {
 }
 
 // 每一分钟轮询一次
-setInterval(checkFuturePrice, 60000);
+setInterval(checkFuturePrice, 5000);
 checkFuturePrice(); // 启动时运行一次

@@ -5,3 +5,4 @@ kline
 .env
 cache_data
 klines.*
+node_modules

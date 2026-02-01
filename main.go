@@ -34,37 +34,52 @@ func getLastOpenTime(db *gorm.DB, symbol string) int64 {
 
 // ================= 数据更新逻辑 =================
 func updateKlines(db *gorm.DB, symbol string) error {
-	// 创建一个带有symbol的Kline实例，用于获取表名
 	kline := Kline{Symbol: symbol}
 
 	var last Kline
-	// var last_open_time = time.Now().Add(time.Hour * -24).UnixMilli()
 	res := db.Table(kline.TableName()).Order("open_time DESC").Limit(1).Find(&last)
 
 	var startTime int64
-	var limitCount int = 200
+	var limitCount int
+
 	if res.RowsAffected == 0 {
-		limitCount = 999
+		// 情况1：没有任何记录
+		limitCount = 1000 // 建议统一用 1000
 		startTime = time.Now().Add(-5000 * 24 * time.Hour).UnixMilli()
 	} else {
+		// 情况2：有记录，判断时间差
 		startTime = last.OpenTime
+
+		// 计算当前时间与最后一条记录的时间差
+		threeHoursAgo := time.Now().Add(-3 * time.Hour).UnixMilli()
+
+		if last.OpenTime < threeHoursAgo {
+			// 最后一条记录在3小时以前
+			limitCount = 1000
+		} else {
+			// 最后一条记录在3小时以内
+			limitCount = 100
+		}
 	}
 
+	// 注意：此处你可以根据 limitCount 动态获取数据
 	klines, err := fetchBinanceKlines(symbol, "15m", startTime, 0, limitCount)
 	if err != nil {
 		return err
 	}
 
 	for _, k := range klines {
-		k.Symbol = symbol // 确保kline记录包含symbol信息
+		k.Symbol = symbol
 		var existing Kline
-		if err := db.Table(kline.TableName()).Where("open_time = ?", k.OpenTime).First(&existing).Error; err == nil {
-			// 如果未收盘，则更新
+		// 使用 Where 配合 Table 明确指定表名
+		err := db.Table(kline.TableName()).Where("open_time = ?", k.OpenTime).First(&existing).Error
+		if err == nil {
+			// 如果记录已存在且尚未收盘，则更新
 			if existing.CloseTime > time.Now().UnixMilli() {
 				db.Table(kline.TableName()).Model(&existing).Updates(k)
 			}
 		} else {
-			// 新增
+			// 记录不存在，新增
 			db.Table(kline.TableName()).Create(&k)
 		}
 	}

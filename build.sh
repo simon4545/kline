@@ -11,3 +11,5 @@ echo "重新加载 PM2 进程..."
 pm2 reload kline || pm2 start ./kline --name kline
 
 echo "完成。"
+
+# rsync  -avz ./kline root@45.136.12.186:/root/alpha/alphaserv

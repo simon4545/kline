@@ -20,18 +20,6 @@ import (
 var cache = NewLedisCache()
 var symbols []string
 
-func getLastOpenTime(db *gorm.DB, symbol string) int64 {
-	kline := Kline{Symbol: symbol}
-
-	var last Kline
-	res := db.Table(kline.TableName()).Order("open_time DESC").Limit(1).Find(&last)
-	if res.RowsAffected > 0 {
-		return last.OpenTime
-	} else {
-		return 0
-	}
-}
-
 // ================= 数据更新逻辑 =================
 func updateKlines(db *gorm.DB, symbol string) error {
 	kline := Kline{Symbol: symbol}
@@ -90,6 +78,7 @@ var botToken, chatID string
 var port *int
 
 func init() {
+	fmt.Println("启动程序")
 	// 读取 .env
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
@@ -103,6 +92,7 @@ func init() {
 
 // ================= 主程序 =================
 func main() {
+	fmt.Println("启动程序")
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
 		log.Fatal(err)
@@ -142,6 +132,7 @@ func main() {
 	// // 	db.Migrator().DropTable(fmt.Sprintf("kline_%s", symbol))
 	// // }
 	// return
+
 	// 遍历所有代币
 	for _, symbol := range symbols {
 		// 创建一个带有symbol的Kline实例，用于获取表名

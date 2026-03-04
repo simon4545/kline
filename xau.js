@@ -10,9 +10,9 @@ const EMAIL_CONFIG = {
 
 const SYMBOL = 'XAUUSDT';          
 const DROP_THRESHOLD = 35;
-const COOLDOWN_TIME = 10 * 60 * 1000; 
+const COOLDOWN_TIME = 50 * 60 * 1000; 
 
-// --- 状态追踪 ---
+// --- 状态追踪 (保留你原始的结构) ---
 let lastVolTime = 0;
 let confirmedTD = {
     "5m": { lastKTime: 0 },
@@ -29,15 +29,56 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
- * 发送邮件函数
+ * 修改点：通过时间戳筛选出所有已收盘的 K 线
+ * 索引 [6] 是该 K 线的收盘毫秒时间戳
+ */
+function getClosedKlines(klines) {
+    const now = Date.now();
+    return klines.filter(k => k[6] < now);
+}
+
+/**
+ * 判定逻辑：传入已收盘的 K 线数组，直接从最后一根开始回溯
+ */
+function checkClosedTD9(closedKlines) {
+    if (closedKlines.length < 13) return null;
+    
+    // 最后一根就是刚刚收盘的那根
+    const targetIdx = closedKlines.length - 1; 
+
+    // 买入九转
+    let isBuy9 = true;
+    for (let i = 0; i < 9; i++) {
+        const currentCheckIdx = targetIdx - i;
+        const close = parseFloat(closedKlines[currentCheckIdx][4]);
+        const close4Before = parseFloat(closedKlines[currentCheckIdx - 4][4]);
+        if (!(close < close4Before)) { isBuy9 = false; break; }
+    }
+    if (isBuy9) return { type: '买入 (TD9)', side: 'BUY' };
+
+    // 卖出九转
+    let isSell9 = true;
+    for (let i = 0; i < 9; i++) {
+        const currentCheckIdx = targetIdx - i;
+        const close = parseFloat(closedKlines[currentCheckIdx][4]);
+        const close4Before = parseFloat(closedKlines[currentCheckIdx - 4][4]);
+        if (!(close > close4Before)) { isSell9 = false; break; }
+    }
+    if (isSell9) return { type: '卖出 (TD9)', side: 'SELL' };
+
+    return null;
+}
+
+/**
+ * 发送邮件函数 (保留原标题逻辑)
  */
 async function sendEmailNotification(subject, text) {
+    let html = text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     const mailOptions = {
         from: `"给黄金之王们" <${EMAIL_CONFIG.user}>`,
         to: EMAIL_CONFIG.to,
         subject: subject,
-        // 将 Markdown 风格稍微转为简单的 HTML 换行
-        html: text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        html: html
     };
 
     try {
@@ -48,37 +89,7 @@ async function sendEmailNotification(subject, text) {
     }
 }
 
-/**
- * 判定逻辑：从刚收盘的 K 线开始倒序回溯 9 根
- */
-function checkClosedTD9(klines) {
-    if (klines.length < 13) return null;
-    const targetIdx = klines.length - 2; 
-
-    // 买入九转
-    let isBuy9 = true;
-    for (let i = 0; i < 9; i++) {
-        const currentCheckIdx = targetIdx - i;
-        const close = parseFloat(klines[currentCheckIdx][4]);
-        const close4Before = parseFloat(klines[currentCheckIdx - 4][4]);
-        if (!(close < close4Before)) { isBuy9 = false; break; }
-    }
-    if (isBuy9) return { type: '买入 (TD9)', side: 'BUY' };
-
-    // 卖出九转
-    let isSell9 = true;
-    for (let i = 0; i < 9; i++) {
-        const currentCheckIdx = targetIdx - i;
-        const close = parseFloat(klines[currentCheckIdx][4]);
-        const close4Before = parseFloat(klines[currentCheckIdx - 4][4]);
-        if (!(close > close4Before)) { isSell9 = false; break; }
-    }
-    if (isSell9) return { type: '卖出 (TD9)', side: 'SELL' };
-
-    return null;
-}
-
-async function fetchKlines(interval, limit = 20) {
+async function fetchKlines(interval, limit = 30) {
     try {
         const res = await axios.get('https://fapi.binance.com/fapi/v1/klines', {
             params: { symbol: SYMBOL, interval, limit }
@@ -110,16 +121,24 @@ async function monitorTask() {
     // 2. 监控 5m 和 15m 的收盘九转
     const intervals = ['5m', '15m'];
     for (const interval of intervals) {
-        const klines = await fetchKlines(interval, 30);
-        if (!klines) continue;
+        const rawKlines = await fetchKlines(interval, 30);
+        if (!rawKlines) continue;
         
-        const closedKTime = klines[klines.length - 2][0];
-        
-        if (confirmedTD[interval].lastKTime !== closedKTime) {
-            const result = checkClosedTD9(klines);
+        // 筛选出已收盘的 K 线
+        const closedKlines = getClosedKlines(rawKlines);
+        if (closedKlines.length === 0) continue;
+
+        // 获取当前最新收盘的那根 K 线的开盘时间作为标识 [0]
+        // const currentClosedKTime = closedKlines[closedKlines.length - 1][0];
+        const now = Date.now();
+
+        // 保留原逻辑：冷却期检查 + 新收盘判定
+        if ((now - confirmedTD[interval].lastKTime) > COOLDOWN_TIME) {
+            const result = checkClosedTD9(closedKlines);
             if (result) {
                 const emoji = result.side === 'BUY' ? '🟢' : '🔴';
-                const price = klines[klines.length - 2][4];
+                const price = closedKlines[closedKlines.length - 1][4];
+                // 原始标题和文案格式
                 const subject = `${emoji} 九转信号: ${SYMBOL} (${interval})`;
                 const msg = `**神奇九转·收盘确认: ${SYMBOL}**\n\n` +
                             `● 周期: ${interval}\n` +
@@ -128,12 +147,13 @@ async function monitorTask() {
                             `● 状态: 已收盘确认`;
                 
                 sendEmailNotification(subject, msg);
+                // 只有触发了信号才更新时间，进入冷却
+                confirmedTD[interval].lastKTime = now; 
             }
-            confirmedTD[interval].lastKTime = closedKTime;
         }
     }
 }
-// sendEmailNotification("test","simon4545")
+
 // 每 15 秒检查一次
 setInterval(monitorTask, 15000);
 monitorTask();

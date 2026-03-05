@@ -1,36 +1,41 @@
+require('dotenv').config(); // 加载环境变量
+const { Bot, HttpError, GrammyError } = require('grammy');
 const axios = require('axios');
-const nodemailer = require('nodemailer');
 
-// --- 配置参数 ---
-const EMAIL_CONFIG = {
-    user: 'simon4547@qq.com',
-    pass: 'mvypepqmwwsiceae',
-    to:   'simon4545@qq.com,535415790@qq.com,278699832@qq.com'      
-};
-
-const SYMBOL = 'XAUUSDT';          
-const DROP_THRESHOLD = 35;
-const COOLDOWN_TIME = 50 * 60 * 1000; 
-
-// --- 状态追踪 (保留你原始的结构) ---
+// --- 从环境变量读取配置 ---
+const TG_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TG_CHAT_ID = "@chaisanye";
+const SYMBOL = 'XAUUSDT';
+const DROP_THRESHOLD =  35;
+const COOLDOWN_TIME = 3000*1000;
+const bot = new Bot(TG_BOT_TOKEN);
+// --- 状态追踪 ---
 let lastVolTime = 0;
 let confirmedTD = {
     "5m": { lastKTime: 0 },
     "15m": { lastKTime: 0 }
 };
 
-// --- 创建邮件传输对象 ---
-const transporter = nodemailer.createTransport({
-    service: 'qq',
-    auth: {
-        user: EMAIL_CONFIG.user,
-        pass: EMAIL_CONFIG.pass
+/**
+ * 核心推送函数：使用 grammY 的 API
+ */
+async function sendNotification(text) {
+    try {
+        await bot.api.sendMessage(TG_CHAT_ID, text, { parse_mode: "Markdown" });
+        console.log(`[${new Date().toLocaleTimeString()}] ✅ 推送成功`);
+    } catch (error) {
+        if (error instanceof GrammyError) {
+            console.error("❌ Telegram 接口错误:", error.description);
+        } else if (error instanceof HttpError) {
+            console.error("❌ 网络连接失败 (可能是防火墙问题):", error);
+        } else {
+            console.error("❌ 未知错误:", error);
+        }
     }
-});
+}
 
 /**
- * 修改点：通过时间戳筛选出所有已收盘的 K 线
- * 索引 [6] 是该 K 线的收盘毫秒时间戳
+ * 筛选出已收盘的 K 线
  */
 function getClosedKlines(klines) {
     const now = Date.now();
@@ -38,12 +43,10 @@ function getClosedKlines(klines) {
 }
 
 /**
- * 判定逻辑：传入已收盘的 K 线数组，直接从最后一根开始回溯
+ * TD9 判定逻辑
  */
 function checkClosedTD9(closedKlines) {
     if (closedKlines.length < 13) return null;
-    
-    // 最后一根就是刚刚收盘的那根
     const targetIdx = closedKlines.length - 1; 
 
     // 买入九转
@@ -67,26 +70,6 @@ function checkClosedTD9(closedKlines) {
     if (isSell9) return { type: '卖出 (TD9)', side: 'SELL' };
 
     return null;
-}
-
-/**
- * 发送邮件函数 (保留原标题逻辑)
- */
-async function sendEmailNotification(subject, text) {
-    let html = text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    const mailOptions = {
-        from: `"给黄金之王们" <${EMAIL_CONFIG.user}>`,
-        to: EMAIL_CONFIG.to,
-        subject: subject,
-        html: html
-    };
-
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log(`[${new Date().toLocaleTimeString()}] ✅ 邮件推送成功: ${subject}`);
-    } catch (e) {
-        console.error('❌ 邮件推送失败:', e.message);
-    }
 }
 
 async function fetchKlines(interval, limit = 30) {
@@ -113,7 +96,8 @@ async function monitorTask() {
         const amp = maxHigh - minLow;
         const now = Date.now();
         if (amp >= DROP_THRESHOLD && (now - lastVolTime > COOLDOWN_TIME)) {
-            sendEmailNotification(`⚠️ 波动预警: ${SYMBOL}`, `跌幅已达: $${amp.toFixed(2)}`);
+            const alertMsg = `⚠️ *波动预警: ${SYMBOL}*\n\n跌幅已达: *$${amp.toFixed(2)}*`;
+            sendNotification(alertMsg);
             lastVolTime = now;
         }
     }
@@ -124,30 +108,25 @@ async function monitorTask() {
         const rawKlines = await fetchKlines(interval, 30);
         if (!rawKlines) continue;
         
-        // 筛选出已收盘的 K 线
         const closedKlines = getClosedKlines(rawKlines);
         if (closedKlines.length === 0) continue;
 
-        // 获取当前最新收盘的那根 K 线的开盘时间作为标识 [0]
-        // const currentClosedKTime = closedKlines[closedKlines.length - 1][0];
         const now = Date.now();
 
-        // 保留原逻辑：冷却期检查 + 新收盘判定
         if ((now - confirmedTD[interval].lastKTime) > COOLDOWN_TIME) {
             const result = checkClosedTD9(closedKlines);
             if (result) {
                 const emoji = result.side === 'BUY' ? '🟢' : '🔴';
                 const price = closedKlines[closedKlines.length - 1][4];
-                // 原始标题和文案格式
-                const subject = `${emoji} 九转信号: ${SYMBOL} (${interval})`;
-                const msg = `**神奇九转·收盘确认: ${SYMBOL}**\n\n` +
-                            `● 周期: ${interval}\n` +
-                            `● 信号: ${result.type}\n` +
-                            `● 收盘价: ${price}\n` +
-                            `● 状态: 已收盘确认`;
                 
-                sendEmailNotification(subject, msg);
-                // 只有触发了信号才更新时间，进入冷却
+                const msg = `${emoji} *九转信号: ${SYMBOL} (${interval})*\n\n` +
+                            `*神奇九转·收盘确认*\n` +
+                            `• 周期: ${interval}\n` +
+                            `• 信号: ${result.type}\n` +
+                            `• 收盘价: ${price}\n` +
+                            `• 状态: 已收盘确认`;
+                
+                sendNotification(msg);
                 confirmedTD[interval].lastKTime = now; 
             }
         }
@@ -157,3 +136,6 @@ async function monitorTask() {
 // 每 15 秒检查一次
 setInterval(monitorTask, 15000);
 monitorTask();
+// (async function(){
+//     sendNotification("asdf")
+// })()

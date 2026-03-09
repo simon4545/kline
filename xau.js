@@ -6,14 +6,16 @@ const axios = require('axios');
 const TG_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT_ID = "@chaisanye";
 const SYMBOL = 'XAUUSDT';
-const DROP_THRESHOLD =  35;
-const COOLDOWN_TIME = 3000*1000;
+const DROP_THRESHOLD = 35;
+const COOLDOWN_TIME = 3000 * 1000;
 const bot = new Bot(TG_BOT_TOKEN);
 // --- 状态追踪 ---
 let lastVolTime = 0;
 let confirmedTD = {
     "5m": { lastKTime: 0 },
-    "15m": { lastKTime: 0 }
+    "15m": { lastKTime: 0 },
+    "short":{ lastKTime: 0 },
+    "long":{ lastKTime: 0 }
 };
 
 /**
@@ -47,7 +49,7 @@ function getClosedKlines(klines) {
  */
 function checkClosedTD9(closedKlines) {
     if (closedKlines.length < 13) return null;
-    const targetIdx = closedKlines.length - 1; 
+    const targetIdx = closedKlines.length - 1;
 
     // 买入九转
     let isBuy9 = true;
@@ -71,7 +73,25 @@ function checkClosedTD9(closedKlines) {
 
     return null;
 }
-
+function dropdown(list, threshold, isshort) {
+    const highs = list.map(k => parseFloat(k[2]));
+    const maxHigh = Math.max(...highs);
+    const minLow = parseFloat(list[list.length - 1][3]);
+    const amp = maxHigh - minLow;
+    const now = Date.now();
+    let lastVolTime=isshort?confirmedTD["short"].lastKTime:confirmedTD["long"].lastKTime;
+    if (amp >= threshold && (now - lastVolTime > COOLDOWN_TIME)) {
+        let alertMsg = "";
+        if (isshort) {
+            alertMsg = `⚠️ *波动预警1: ${SYMBOL}*\n\n跌幅已达: *$${amp.toFixed(2)}*\n\n价格:${minLow}`;
+            confirmedTD["short"].lastKTime = now;
+        } else {
+            alertMsg = `⚠️ *波动预警2: ${SYMBOL}*\n\n跌幅已达: *$${amp.toFixed(2)}*\n\n价格:${minLow}`;
+            confirmedTD["long"].lastKTime = now;
+        }
+        sendNotification(alertMsg);
+    }
+}
 async function fetchKlines(interval, limit = 30) {
     try {
         const res = await axios.get('https://fapi.binance.com/fapi/v1/klines', {
@@ -86,20 +106,13 @@ async function fetchKlines(interval, limit = 30) {
 
 async function monitorTask() {
     console.log(`[${new Date().toLocaleTimeString()}] 正在扫描行情...`);
-    
+
     // 1. 监控 1m 波动
-    const k1m = await fetchKlines('1m', 10);
+    const k1m = await fetchKlines('1m', 240);
     if (k1m) {
-        const highs = k1m.map(k => parseFloat(k[2]));
-        const maxHigh = Math.max(...highs);
-        const minLow = parseFloat(k1m[k1m.length - 1][3]);
-        const amp = maxHigh - minLow;
-        const now = Date.now();
-        if (amp >= DROP_THRESHOLD && (now - lastVolTime > COOLDOWN_TIME)) {
-            const alertMsg = `⚠️ *波动预警: ${SYMBOL}*\n\n跌幅已达: *$${amp.toFixed(2)}*`;
-            sendNotification(alertMsg);
-            lastVolTime = now;
-        }
+        let k1short = k1m.slice(-10);
+        dropdown(k1short, DROP_THRESHOLD);
+        dropdown(k1m, DROP_THRESHOLD * 2)
     }
 
     // 2. 监控 5m 和 15m 的收盘九转
@@ -107,7 +120,7 @@ async function monitorTask() {
     for (const interval of intervals) {
         const rawKlines = await fetchKlines(interval, 30);
         if (!rawKlines) continue;
-        
+
         const closedKlines = getClosedKlines(rawKlines);
         if (closedKlines.length === 0) continue;
 
@@ -118,16 +131,16 @@ async function monitorTask() {
             if (result) {
                 const emoji = result.side === 'BUY' ? '🟢' : '🔴';
                 const price = closedKlines[closedKlines.length - 1][4];
-                
+
                 const msg = `${emoji} *九转信号: ${SYMBOL} (${interval})*\n\n` +
-                            `*神奇九转·收盘确认*\n` +
-                            `• 周期: ${interval}\n` +
-                            `• 信号: ${result.type}\n` +
-                            `• 收盘价: ${price}\n` +
-                            `• 状态: 已收盘确认`;
-                
+                    `*神奇九转·收盘确认*\n` +
+                    `• 周期: ${interval}\n` +
+                    `• 信号: ${result.type}\n` +
+                    `• 收盘价: ${price}\n` +
+                    `• 状态: 已收盘确认`;
+
                 sendNotification(msg);
-                confirmedTD[interval].lastKTime = now; 
+                confirmedTD[interval].lastKTime = now;
             }
         }
     }

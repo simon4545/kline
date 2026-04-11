@@ -10,7 +10,6 @@ const DROP_THRESHOLD = 35;
 const COOLDOWN_TIME = 3000 * 1000;
 const bot = new Bot(TG_BOT_TOKEN);
 // --- 状态追踪 ---
-let lastVolTime = 0;
 let confirmedTD = {
     "5m": { lastKTime: 0 },
     "15m": { lastKTime: 0 },
@@ -110,9 +109,9 @@ async function monitorTask() {
     // 1. 监控 1m 波动
     const k1m = await fetchKlines('1m', 240);
     if (k1m) {
-        let k1short = k1m.slice(-10);
-        dropdown(k1short, DROP_THRESHOLD);
-        dropdown(k1m, DROP_THRESHOLD * 2)
+        let k1short = k1m.slice(-15);
+        dropdown(k1short, DROP_THRESHOLD,true);
+        dropdown(k1m, DROP_THRESHOLD * 2,false)
     }
 
     // 2. 监控 5m 和 15m 的收盘九转

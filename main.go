@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -21,56 +22,71 @@ var cache = NewLedisCache()
 var symbols []string
 
 // ================= 数据更新逻辑 =================
+
 func updateKlines(db *gorm.DB, symbol string) error {
-	kline := Kline{Symbol: symbol}
+	const interval = "4h"
+	periodMs := int64(4 * 3600 * 1000) // 4小时对应的毫秒数
+	klineModel := Kline{Symbol: symbol}
+	tableName := klineModel.TableName()
 
+	// 1. 确定起始时间
 	var last Kline
-	res := db.Table(kline.TableName()).Order("open_time DESC").Limit(1).Find(&last)
-
+	res := db.Table(tableName).Order("open_time DESC").Limit(1).Find(&last)
 	var startTime int64
-	var limitCount int
-
 	if res.RowsAffected == 0 {
-		// 情况1：没有任何记录
-		limitCount = 1000 // 建议统一用 1000
-		startTime = time.Now().Add(-5000 * 24 * time.Hour).UnixMilli()
+		// 没有历史数据：从一年前开始拉取
+		startTime = time.Now().AddDate(-1, 0, 0).UnixMilli()
 	} else {
-		// 情况2：有记录，判断时间差
-		startTime = last.OpenTime
+		// 已有数据：从最后一条的下一个周期开始（避免重复拉取）
+		startTime = last.OpenTime + periodMs
+	}
 
-		// 计算当前时间与最后一条记录的时间差
-		threeHoursAgo := time.Now().Add(-3 * time.Hour).UnixMilli()
+	nowMs := time.Now().UnixMilli()
+	maxLoops := 10 // 一年最多2190条，循环3次足够，设10次作为安全上限
 
-		if last.OpenTime < threeHoursAgo {
-			// 最后一条记录在3小时以前
-			limitCount = 1000
-		} else {
-			// 最后一条记录在3小时以内
-			limitCount = 100
+	for i := 0; i < maxLoops; i++ {
+		if startTime > nowMs {
+			break
 		}
-	}
 
-	// 注意：此处你可以根据 limitCount 动态获取数据
-	klines, err := fetchBinanceKlines(symbol, "15m", startTime, 0, limitCount)
-	if err != nil {
-		return err
-	}
+		// 2. 拉取最多1000条K线
+		klines, err := fetchBinanceKlines(symbol, interval, startTime, 0, 1000)
+		if err != nil {
+			return fmt.Errorf("fetch klines for %s: %w", symbol, err)
+		}
+		if len(klines) == 0 {
+			break
+		}
 
-	for _, k := range klines {
-		k.Symbol = symbol
-		var existing Kline
-		// 使用 Where 配合 Table 明确指定表名
-		err := db.Table(kline.TableName()).Where("open_time = ?", k.OpenTime).First(&existing).Error
-		if err == nil {
-			// 如果记录已存在且尚未收盘，则更新
-			if existing.CloseTime > time.Now().UnixMilli() {
-				db.Table(kline.TableName()).Model(&existing).Updates(k)
+		// 3. 写入/更新数据库
+		for _, k := range klines {
+			k.Symbol = symbol
+			var existing Kline
+			err := db.Table(tableName).Where("open_time = ?", k.OpenTime).First(&existing).Error
+			if err == nil {
+				// 已存在且未收盘 → 更新（通常只发生在最新一根未完整K线上）
+				if existing.CloseTime > time.Now().UnixMilli() {
+					db.Table(tableName).Model(&existing).Updates(k)
+				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
+				// 不存在 → 插入
+				db.Table(tableName).Create(&k)
 			}
-		} else {
-			// 记录不存在，新增
-			db.Table(kline.TableName()).Create(&k)
 		}
+
+		// 4. 更新下一次拉取的起始时间
+		lastKline := klines[len(klines)-1]
+		startTime = lastKline.OpenTime + periodMs
+
+		// 5. 如果本次返回数量不足1000，说明已经是最新数据，结束循环
+		if len(klines) < 1000 {
+			break
+		}
+
+		// 避免币安API限频
+		time.Sleep(200 * time.Millisecond)
 	}
+
 	return nil
 }
 
@@ -181,14 +197,9 @@ func main() {
 
 	go func() {
 		// 定时任务：每分钟更新一次
-		// ticker := time.NewTicker(2 * time.Minute)
-		// defer ticker.Stop()
-		// for range ticker.C {
-		// 	if err := processSymbols(symbols, db); err != nil {
-		// 		log.Println("部分任务失败:", err)
-		// 	}
-		// }
-		for {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
 			if err := processSymbols(symbols, db); err != nil {
 				log.Println("部分任务失败:", err)
 			}
@@ -207,16 +218,16 @@ func main() {
 	// 		// }
 	// 	}
 	// }()
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
+	// go func() {
+	// 	ticker := time.NewTicker(30 * time.Second)
+	// 	defer ticker.Stop()
 
-		for range ticker.C {
-			if err := CheckAllSymbolsRSI(db); err != nil {
-				log.Printf("检查MACD水上金叉失败: %v", err)
-			}
-		}
-	}()
+	// 	for range ticker.C {
+	// 		if err := CheckAllSymbolsRSI(db); err != nil {
+	// 			log.Printf("检查MACD水上金叉失败: %v", err)
+	// 		}
+	// 	}
+	// }()
 	clean(db)
 	select {}
 }

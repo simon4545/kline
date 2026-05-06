@@ -13,8 +13,8 @@ const bot = new Bot(TG_BOT_TOKEN);
 let confirmedTD = {
     "5m": { lastKTime: 0 },
     "15m": { lastKTime: 0 },
-    "short":{ lastKTime: 0 },
-    "long":{ lastKTime: 0 }
+    "short":{ lastKTime: 0, lastRiseTime: 0 },
+    "long":{ lastKTime: 0, lastRiseTime: 0 }
 };
 
 /**
@@ -91,6 +91,25 @@ function dropdown(list, threshold, isshort) {
         sendNotification(alertMsg);
     }
 }
+function riseAlert(list, threshold, isshort) {
+    const lows = list.map(k => parseFloat(k[3]));
+    const minLow = Math.min(...lows);
+    const maxHigh = parseFloat(list[list.length - 1][2]);
+    const amp = maxHigh - minLow;
+    const now = Date.now();
+    let lastRiseTime=isshort?confirmedTD["short"].lastRiseTime:confirmedTD["long"].lastRiseTime;
+    if (amp >= threshold && (now - lastRiseTime > COOLDOWN_TIME)) {
+        let alertMsg = "";
+        if (isshort) {
+            alertMsg = `🚀 *波动预警1(上涨): ${SYMBOL}*\n\n涨幅已达: *$${amp.toFixed(2)}*\n\n价格:${maxHigh}`;
+            confirmedTD["short"].lastRiseTime = now;
+        } else {
+            alertMsg = `🚀 *波动预警2(上涨): ${SYMBOL}*\n\n涨幅已达: *$${amp.toFixed(2)}*\n\n价格:${maxHigh}`;
+            confirmedTD["long"].lastRiseTime = now;
+        }
+        sendNotification(alertMsg);
+    }
+}
 async function fetchKlines(interval, limit = 30) {
     try {
         const res = await axios.get('https://fapi.binance.com/fapi/v1/klines', {
@@ -111,7 +130,9 @@ async function monitorTask() {
     if (k1m) {
         let k1short = k1m.slice(-15);
         dropdown(k1short, DROP_THRESHOLD,true);
-        dropdown(k1m, DROP_THRESHOLD * 2,false)
+        riseAlert(k1short, DROP_THRESHOLD,true);
+        dropdown(k1m, DROP_THRESHOLD * 2,false);
+        riseAlert(k1m, DROP_THRESHOLD * 2,false);
     }
 
     // 2. 监控 5m 和 15m 的收盘九转

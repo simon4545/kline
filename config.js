@@ -10,7 +10,7 @@ const config = {
     // 现货行情API基础URL
     spotBaseUrl: 'https://api.binance.com',
     // 每个请求间隔500毫秒
-    delay: 100
+    delay: 200
   },
 
   // 筛选条件

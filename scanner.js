@@ -97,7 +97,7 @@ class Scanner {
               riseFromBottom: analysis.pullbackInfo.riseFromBottom,
               launchDate: ticker ? new Date(ticker.closeTime).toISOString().split('T')[0] : 'N/A',
               priceChangePercent: ticker ? ticker.priceChangePercent : null,
-              volume: ticker ? ticker.volume : null
+              volume: ticker ? (ticker.volume*analysis.pullbackInfo.currentPrice)/100_000_000 : null
             };
             results.push(result);
             console.log(`  -> ✓ 符合条件! 回调幅度: ${analysis.pullbackInfo.pullbackFromTop.toFixed(2)}%`);

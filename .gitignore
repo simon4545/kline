@@ -6,3 +6,4 @@ kline
 cache_data
 klines.*
 node_modules
+*.xlsx

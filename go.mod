@@ -23,6 +23,7 @@ require (
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/moul/http2curl v1.0.0 // indirect
 	github.com/pelletier/go-toml v1.0.1 // indirect

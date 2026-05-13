@@ -42,6 +42,25 @@ async function fetchMyKlines(symbol, interval, limit) {
         return null;
     }
 }
+
+// 批量获取K线数据
+async function fetchBatchKlines(symbols, interval, limit) {
+    const apiUrl = `/klines/batch`;
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ symbols: symbols, interval: interval, limit: limit })
+        });
+        return await response.json();
+    } catch (error) {
+        console.error(`批量获取K线数据失败:`, error);
+        return null;
+    }
+}
 async function fetchAlphaKlines(symbol, interval, limit) {
     const apiUrl = `https://chart.1pan.me/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
 

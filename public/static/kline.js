@@ -228,11 +228,8 @@ async function loadCharts(interval, force = false) {
         const totalCharts = contracts.length;
         
         // 创建一个处理图表的函数
-        const processChart = async (symbol) => {
+        const processChart = async (symbol, klines) => {
             try {
-                // 获取K线数据
-                const klines = await fetchBinanceKlines(symbol, interval, 500);
-                
                 if (klines && klines.length > 0) {
                     // 创建图表容器
                     const chartWrapper = document.createElement('div');
@@ -259,15 +256,30 @@ async function loadCharts(interval, force = false) {
         };
         
         // 分批处理图表以避免浏览器过载
-        const processChartsInBatches = async (symbols, batchSize) => {
+        const processChartsInBatches = async (symbols, klinesMap, batchSize) => {
             for (let i = 0; i < symbols.length; i += batchSize) {
                 const batch = symbols.slice(i, i + batchSize);
-                await Promise.all(batch.map(processChart));
+                const promises = batch.map(symbol => processChart(symbol, klinesMap[symbol]));
+                await Promise.all(promises);
             }
         };
         
+        // 批量获取所有K线数据
+        statusElement.textContent = `正在批量获取K线数据...`;
+        const batchKlineData = await fetchBatchKlines(contracts, interval, 500);
+        
+        // 构建symbol到klines的映射
+        const klinesMap = {};
+        if (batchKlineData && Array.isArray(batchKlineData)) {
+            batchKlineData.forEach(item => {
+                if (item.klines && item.klines.length > 0) {
+                    klinesMap[item.symbol] = item.klines;
+                }
+            });
+        }
+        
         // 处理所有合约
-        await processChartsInBatches(contracts, MAX_CONCURRENT_CHARTS);
+        await processChartsInBatches(contracts, klinesMap, MAX_CONCURRENT_CHARTS);
         
         statusElement.textContent = `加载完成，共显示 ${chartsContainer.children.length} 个图表`;
     } catch (error) {
@@ -373,7 +385,7 @@ function renderChart(symbol, klines, interval) {
 
     // 调整图表以适应数据
     const total = chartData.length;
-    const visibleStart = chartData[total - 60].time;
+    const visibleStart = total >= 60 ? chartData[total - 60].time : chartData[0].time;
     const visibleEnd = chartData[total - 1].time;
 
     chart.timeScale().setVisibleRange({

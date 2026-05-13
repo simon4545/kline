@@ -105,6 +105,7 @@ func startHttpServer(db *gorm.DB) {
 
 	http.Handle("/", gzhttp.GzipHandler(http.FileServer(http.Dir("./public"))))
 	http.HandleFunc("/klines", gzhttp.GzipHandler(handleKlineQuery(db)))
+	http.HandleFunc("/klines/batch", gzhttp.GzipHandler(handleKlinesBatch(db)))
 	http.HandleFunc("/symbols", handleSymbols())
 	http.HandleFunc("/hot", handleHotSymbols())
 	http.HandleFunc("/marketcap", handleMarketCap())

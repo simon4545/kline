@@ -14,6 +14,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// setCORS 设置通用的 CORS 头
+func setCORS(w http.ResponseWriter, methods string) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", methods)
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
 // fetchMarketCapData 调用币安 API 获取 market cap 数据
 func fetchMarketCapData() ([]byte, error) {
 	resp, err := http.Get("https://www.binance.com/bapi/apex/v1/friendly/apex/marketing/complianceSymbolList")
@@ -37,11 +44,7 @@ func fetchFutureMarketCapData() ([]byte, error) {
 // handleMarketCap 返回 spot market cap 数据
 func handleMarketCap() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 允许跨域
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+		setCORS(w, "GET, OPTIONS")
 		if r.Method == http.MethodOptions {
 			return // 处理预检请求
 		}
@@ -60,11 +63,7 @@ func handleMarketCap() http.HandlerFunc {
 // handleFutureMarketCap 返回 futures market cap 数据
 func handleFutureMarketCap() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 允许跨域
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+		setCORS(w, "GET, OPTIONS")
 		if r.Method == http.MethodOptions {
 			return // 处理预检请求
 		}
@@ -82,11 +81,7 @@ func handleFutureMarketCap() http.HandlerFunc {
 
 func handleSymbols() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 允许跨域
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+		setCORS(w, "GET, OPTIONS")
 		if r.Method == http.MethodOptions {
 			return // 处理预检请求
 		}
@@ -103,26 +98,86 @@ func handleHotSymbols() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+		setCORS(w, "GET, OPTIONS")
 		if r.Method == http.MethodOptions {
-			return // 处理预检请求
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(js)
 	}
 }
 
+// ================= 批量K线查询接口 =================
+// KlinesRequest 批量K线请求结构
+type KlinesRequest struct {
+	Symbols  []string `json:"symbols"`
+	Interval string   `json:"interval"`
+	Limit    int      `json:"limit"`
+}
+
+// KlinesResponse 批量K线响应结构
+type KlinesResponse struct {
+	Symbol string          `json:"symbol"`
+	Klines [][]interface{} `json:"klines"`
+	Error  string          `json:"error,omitempty"`
+}
+
+func handleKlinesBatch(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w, "POST, OPTIONS")
+		if r.Method == http.MethodOptions {
+			return
+		}
+
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req KlinesRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("json decode error: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		if len(req.Symbols) == 0 || req.Interval == "" {
+			http.Error(w, "missing symbols or interval", http.StatusBadRequest)
+			return
+		}
+
+		if req.Limit == 0 {
+			req.Limit = 500
+		}
+
+		// 批量查询每个symbol的K线数据
+		results := make([]KlinesResponse, 0, len(req.Symbols))
+
+		for _, symbol := range req.Symbols {
+			data, err := queryAggregatedKlines(db, symbol, req.Interval, req.Limit)
+			if err != nil {
+				results = append(results, KlinesResponse{
+					Symbol: symbol,
+					Klines: nil,
+					Error:  err.Error(),
+				})
+				continue
+			}
+			results = append(results, KlinesResponse{
+				Symbol: symbol,
+				Klines: data,
+				Error:  "",
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
+	}
+}
+
 // ================= HTTP 接口 =================
 func handleKlineQuery(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 允许跨域
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+		setCORS(w, "GET, OPTIONS")
 		if r.Method == http.MethodOptions {
 			return // 处理预检请求
 		}

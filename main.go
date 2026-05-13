@@ -121,7 +121,10 @@ func startHttpServer(db *gorm.DB) {
 
 // startScheduledTasks 启动定时任务
 func startScheduledTasks(db *gorm.DB) {
-	ticker := time.NewTicker(5 * time.Minute)
+	if err := processSymbols(symbols, db); err != nil {
+		log.Println("部分任务失败:", err)
+	}
+	ticker := time.NewTicker(8 * time.Minute)
 	defer ticker.Stop()
 	for range ticker.C {
 		if err := processSymbols(symbols, db); err != nil {

@@ -71,7 +71,7 @@ func updateKlines(db *gorm.DB, symbol string) error {
 		}
 
 		// 避免币安API限频
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(70 * time.Millisecond)
 	}
 
 	return nil

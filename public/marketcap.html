@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Binance 市值筛选</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 20px;
+    }
+    ul {
+      margin-top: 10px;
+      padding: 0;
+      list-style: none;
+    }
+    li {
+      background: #f3f3f3;
+      margin: 5px 0;
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>市值小于 1 亿的代币</h1>
+  <ul id="list"></ul>
+
+  <script>
+    async function fetchData() {
+      try {
+        const response = await fetch("/api/marketcap");
+        const result = await response.json();
+
+        const listEl = document.getElementById("list");
+
+        if (result && result.data) {
+          const filtered = result.data.filter(item => item.marketCap < 100000000);
+          if (filtered.length === 0) {
+            listEl.innerHTML = "<li>没有找到市值小于1亿的代币</li>";
+          } else {
+            filtered.sort(function(a,b){
+                return a.marketCap>b.marketCap?1:-1;
+            })
+            filtered.forEach(item => {
+              const li = document.createElement("li");
+              li.textContent = `${item.name}-市值${(item.marketCap/10000).toFixed(0)}万-排名${item.rank}-今日涨跌${item.dayChange.toFixed(1)}%`;
+              listEl.appendChild(li);
+            });
+          }
+        } else {
+          listEl.innerHTML = "<li>获取数据失败</li>";
+        }
+      } catch (error) {
+        console.error("请求出错:", error);
+        document.getElementById("list").innerHTML = "<li>请求失败，请检查网络</li>";
+      }
+    }
+
+    fetchData();
+  </script>
+</body>
+</html>

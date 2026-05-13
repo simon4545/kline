@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>综合指标</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      margin-top: 100px;
+      background: #f0f4f8;
+      color: #333;
+    }
+
+    h1 {
+      margin-bottom: 40px;
+      font-weight: 700;
+    }
+
+    button {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      border: none;
+      border-radius: 30px;
+      color: white;
+      font-size: 20px;
+      padding: 10px 30px;
+      margin: 10px;
+      cursor: pointer;
+      box-shadow: 0 8px 15px rgba(0, 242, 254, 0.3);
+      transition: all 0.3s ease;
+      user-select: none;
+      font-weight: 600;
+    }
+
+    button:hover {
+      box-shadow: 0 15px 20px rgba(0, 242, 254, 0.5);
+      transform: translateY(-3px);
+      background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+    }
+
+    button:active {
+      transform: translateY(1px);
+      box-shadow: 0 6px 10px rgba(0, 242, 254, 0.2);
+    }
+  </style>
+</head>
+
+<body>
+  <h1>请选择要跳转的页面</h1>
+  <button onclick="location.href='kline.html'">K线汇总</button>
+  <button onclick="location.href='huiche.html'">指定时间相对涨跌幅</button>
+  <button onclick="location.href='rsi.html'">4小时级rsi</button>
+  <button onclick="location.href='rsi1d.html'">日线rsi</button>
+  <button onclick="location.href='doubletop.html'">双顶检测</button>
+  <button onclick="location.href='match.html'">形态检测</button>
+  <button onclick="location.href='trade.html'">以太抄底</button>
+  <button onclick="location.href='top.html'">龙虎榜</button>
+  <button onclick="location.href='ema30.html'">做多形态</button>
+  <button onclick="location.href='active.html'">最近活跃</button>
+  <button onclick="location.href='144.html'">支撑线扫描</button>
+  <button onclick="location.href='marketcap.html'">低市值</button>
+  <button onclick="location.href='stream.html'">联动图表</button>
+</body>
+
+</html>

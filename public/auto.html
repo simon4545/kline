@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Binance 自动追单示例（仅示例）</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, Segoe UI, Roboto, Helvetica, Arial;
+            margin: 20px;
+            background: #f7f9fc
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 6px 18px rgba(20, 30, 50, 0.08);
+            padding: 18px;
+            max-width: 920px;
+            margin: 12px auto
+        }
+
+        label {
+            display: block;
+            margin-top: 8px;
+            font-weight: 600
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 6px;
+            border-radius: 6px;
+            border: 1px solid #d9e2ef
+        }
+
+        .row {
+            display: flex;
+            gap: 12px
+        }
+
+        .col {
+            flex: 1
+        }
+
+        button {
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 0;
+            background: #0b63d6;
+            color: #fff;
+            cursor: pointer;
+            margin-top: 12px
+        }
+
+        button.secondary {
+            background: #6b7280
+        }
+
+        pre {
+            background: #0f1724;
+            color: #e6eef8;
+            padding: 12px;
+            border-radius: 6px;
+            overflow: auto
+        }
+
+        .small {
+            font-size: 13px;
+            color: #6b7280
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px
+        }
+
+        th,
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #eef3fb;
+            text-align: left
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h2>Binance 自动追单示例（单文件）</h2>
+        <p class="small">说明：该示例使用 Binance USDⓈ-M (Futures) REST 接口。**仅供演示**，请先在 Testnet（或使用小额资金）充分测试并自行承担风险。</p>
+
+        <label>API Key</label>
+        <input id="apikey" placeholder="输入你的 API Key" />
+
+        <label>API Secret</label>
+        <input id="apisecret" placeholder="输入你的 API Secret" />
+
+
+
+        <label>交易对 (symbol)</label>
+        <input id="symbol" value="FHEUSDT" />
+
+        <div class="row">
+            <div class="col">
+                <label>初始下单金额 (USD)</label>
+                <input id="baseUsd" value="6" />
+            </div>
+            <div class="col">
+                <label>触发阈值 (%)</label>
+                <input id="thresholdPercent" value="2" />
+            </div>
+        </div>
+
+        <div style="display:flex;gap:12px">
+            <button id="saveBtn">保存 API 到 localStorage</button>
+            <button id="startBtn">开始执行策略</button>
+            <button id="stopBtn" class="secondary">停止策略</button>
+            <button id="closeAllBtn" class="secondary">市价平仓（关闭所有仓位）</button>
+        </div>
+
+        <div style="margin-top:12px">
+            <strong>脚本状态：</strong> <span id="status">未运行</span>
+        </div>
+
+        <h3>已开仓记录</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>方向</th>
+                    <th>USD</th>
+                    <th>价格</th>
+                    <th>数量</th>
+                    <th>时间</th>
+                </tr>
+            </thead>
+            <tbody id="ordersTable"></tbody>
+        </table>
+
+        <h3>日志</h3>
+        <pre id="log">日志输出...</pre>
+    </div>
+
+    <script>
+        const apiKeyInput = document.getElementById('apikey');
+        const apiSecretInput = document.getElementById('apisecret');
+        const symbolInput = document.getElementById('symbol');
+        const baseUsdInput = document.getElementById('baseUsd');
+        const thresholdInput = document.getElementById('thresholdPercent');
+
+        const saveBtn = document.getElementById('saveBtn');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const closeAllBtn = document.getElementById('closeAllBtn');
+
+        const statusSpan = document.getElementById('status');
+        const logEl = document.getElementById('log');
+        const ordersTable = document.getElementById('ordersTable');
+
+        // 使用 futures 主网 URL。测试时请改为 testnet: https://testnet.binancefuture.com
+        const BASE_URL = 'https://fapi.binance.com';
+
+        // 本脚本的内存状态
+        let running = false;
+        let monitorTimeout = null;
+        let placedOrders = []; // {side: 'BUY'|'SELL', usd, price, qty, ts}
+
+        function log(...args) {
+            const line = '[' + new Date().toLocaleTimeString() + '] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ') + "\n";
+            logEl.textContent = line + logEl.textContent;
+            console.debug(...args);
+
+            // 保留最近200条
+            const lines = logEl.textContent.split('\n');
+            if (lines.length > 50) logEl.textContent = lines.slice(0, 50).join('\n');
+            logEl.scrollTop = 0;
+            console.debug(...args);
+        }
+        // localStorage 存取
+        function loadSaved() {
+            apiKeyInput.value = localStorage.getItem('bot_apikey') || '';
+            apiSecretInput.value = localStorage.getItem('bot_apisecret') || '';
+        }
+        loadSaved();
+
+        saveBtn.addEventListener('click', () => {
+            localStorage.setItem('bot_apikey', apiKeyInput.value.trim());
+            localStorage.setItem('bot_apisecret', apiSecretInput.value.trim());
+
+            alert('保存成功（已存 localStorage）');
+        });
+
+        function updateOrdersTable() {
+            ordersTable.innerHTML = '';
+            placedOrders.forEach((o, i) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${i + 1}</td><td>${o.side}</td><td>${o.usd}</td><td>${o.price}</td><td>${o.qty}</td><td>${new Date(o.ts).toLocaleString()}</td>`;
+                ordersTable.appendChild(tr);
+            });
+        }
+
+        // 工具：签名（使用 CryptoJS）
+        function signQuery(qs, secret) {
+            return CryptoJS.HmacSHA256(qs, secret).toString(CryptoJS.enc.Hex);
+        }
+
+        async function apiRequest(path, method = 'GET', params = {}, signed = false) {
+            const url = new URL(BASE_URL + path);
+            const headers = {};
+            if (signed) {
+                params.timestamp = Date.now();
+            }
+            const qs = new URLSearchParams(params).toString();
+            let fullQs = qs;
+            if (signed) {
+                const secret = apiSecretInput.value.trim();
+                const signature = signQuery(fullQs, secret);
+                fullQs += '&signature=' + signature;
+                headers['X-MBX-APIKEY'] = apiKeyInput.value.trim();
+            }
+            const finalUrl = url + (fullQs ? ('?' + fullQs) : '');
+            const opts = { method, headers };
+            if (method === 'POST' && !signed) {
+                opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+            }
+            log('API', method, finalUrl);
+            const resp = await fetch(finalUrl, opts);
+            const text = await resp.text();
+            try { return JSON.parse(text); } catch (e) { return { raw: text, status: resp.status }; }
+        }
+
+        // 获取当前价格
+        async function getPrice(symbol) {
+            const res = await apiRequest('/fapi/v2/ticker/price', 'GET', { symbol }, false);
+            if (res && res.price) return parseFloat(res.price);
+            if (res && res.raw) try { const j = JSON.parse(res.raw); if (j.price) return parseFloat(j.price); } catch (e) { }
+            throw new Error('无法获取价格');
+        }
+
+        // 获取交易对步长信息（最小下单数量步长）
+        async function getSymbolLotSize(symbol) {
+            // 缓存 key
+            const cacheKey = 'lotSize_' + symbol;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                try {
+                    const obj = JSON.parse(cached);
+                    if (obj && obj.stepSize) return { stepSize: obj.stepSize };
+                } catch (e) { }
+            }
+
+            const res = await apiRequest('/fapi/v1/exchangeInfo', 'GET', { symbol }, false);
+            if (res && res.symbols && res.symbols.length > 0) {
+                const s = res.symbols.find(s => s.symbol === symbol);
+                const lotFilter = s.filters.find(f => f.filterType === 'LOT_SIZE');
+                const stepSize = lotFilter ? parseFloat(lotFilter.stepSize) : null;
+                return { stepSize };
+            }
+            return { stepSize: null };
+        }
+
+        // 将数量向下对齐到 stepSize
+        function floorToStep(qty, step) {
+            if (!step) return qty;
+            const p = Math.max(0, Math.round(-Math.log10(step)));
+            return Math.floor(qty / step) * step;
+        }
+
+        // 下市价单（USD 计算）
+        async function placeMarketByUsd(symbol, side, usd) {
+            const price = await getPrice(symbol);
+            const { stepSize } = await getSymbolLotSize(symbol);
+            let qty = usd / price;
+            if (stepSize) {
+                const step = stepSize;
+                qty = floorToStep(qty, step);
+            }
+            qty = Number(qty.toFixed(8));
+            if (qty <= 0) throw new Error('计算到的数量为0，检查 stepSize 与最小下单量');
+            // Futures 市价单使用 quantity 参数
+            const params = { symbol, side, positionSide: (side === 'BUY' ? 'LONG' : 'SHORT'), type: 'MARKET', quantity: qty };
+            // 若你的账户是单向模式或对冲模式，注意 positionSide 与 reduceOnly 的影响（此处简单使用 BUY/SELL）
+            const res = await apiRequest('/fapi/v1/order', 'POST', params, true);
+            console.log(res)
+            return { res, price, qty };
+        }
+
+        // 市价平仓（通过 reduceOnly 市价下反方向单）
+        async function reduceClose(symbol, side, positionSide, qty) {
+            // side 参数是要下的方向（例如要平 BUY 仓，需要下 SELL），并设置 reduceOnly=true
+            //  (side === 'BUY' ? 'LONG' : 'SHORT')
+            const params = { symbol, side, positionSide, type: 'MARKET', quantity: qty };
+            const res = await apiRequest('/fapi/v1/order', 'POST', params, true);
+            return res;
+        }
+
+        // 监控循环函数（使用 setTimeout 递归实现定时任务）
+        async function monitorLoop(symbol,lastPriceRef) {
+            try {
+                const baseUsd = parseFloat(baseUsdInput.value) || 6;
+                const threshold = (parseFloat(thresholdInput.value) || 2) / 100;
+                const nowPrice = await getPrice(symbol);
+                log('当前价', nowPrice, 'lastRef', lastPriceRef);
+
+                if (placedOrders.length >= 4) {
+                    log('达到最大开单次数');
+                    return;
+                }
+
+                // 决定要开哪边：基于已开的手数奇偶性（0-based）
+                // 第1手是 BUY，第二手为 SELL，第三手 BUY，以此类推
+                const nextSide = (placedOrders.length > 0 && placedOrders[placedOrders.length - 1].side == 'BUY') ? 'SELL' : 'BUY';
+                const lastOpposite = placedOrders.slice().reverse().find(o => o.side === nextSide); // 找最近的相反方向的单
+                const comparePrice = lastOpposite ? lastOpposite.price : lastPriceRef;
+
+                if (nextSide === 'SELL') {
+                    // 需要当前价比上一个 BUY 低 threshold -> 跌 >= threshold
+                    const buyRef = comparePrice;
+                    if (nowPrice <= buyRef * (1 - threshold)) {
+                        // 计算金额（基USD，翻倍序列：6,12,24...）
+                        const usd = baseUsd * Math.pow(2, placedOrders.length);
+                        try {
+                            const r = await placeMarketByUsd(symbol, 'SELL', usd);
+                            placedOrders.push({ side: 'SELL', positionSide: "SHORT", usd, price: r.price, qty: r.qty, ts: Date.now() });
+                            updateOrdersTable();
+                            log('已开 SELL', usd, r);
+                        } catch (e) { log('SELL 下单失败', e); }
+                    }
+                } else {
+                    // nextSide == BUY: 需要当前价比上一个 SELL 高 threshold -> 涨 >= threshold
+                    const sellRef = comparePrice;
+                    if (nowPrice >= sellRef * (1 + threshold)) {
+                        const usd = baseUsd * Math.pow(2, placedOrders.length);
+                        try {
+                            const r = await placeMarketByUsd(symbol, 'BUY', usd);
+                            placedOrders.push({ side: 'BUY', positionSide: "LONG", usd, price: r.price, qty: r.qty, ts: Date.now() });
+                            updateOrdersTable();
+                            log('已开 BUY', usd, r);
+                        } catch (e) { log('BUY 下单失败', e); }
+                    }
+                }
+
+            } catch (e) { log('监控循环出错', e); }
+
+            // 递归调度下一次执行（支持停止）
+            if (running) {
+                monitorTimeout = setTimeout(function () { monitorLoop(symbol,lastPriceRef) }, 1000);
+            }
+        }
+
+        // 主策略逻辑
+        startBtn.addEventListener('click', async () => {
+            if (running) return alert('已经在运行');
+            const apikey = apiKeyInput.value.trim();
+            const secret = apiSecretInput.value.trim();
+            if (!apikey || !secret) return alert('请先填写并保存 API Key/Secret');
+            running = true; statusSpan.textContent = '运行中'; log('策略开始');
+
+            // 初始化
+            placedOrders = [];
+            updateOrdersTable();
+
+            const symbol = symbolInput.value.trim().toUpperCase();
+            const baseUsd = parseFloat(baseUsdInput.value) || 6;
+            
+
+            // 下第1手 多单（BUY）
+            try {
+                const first = await placeMarketByUsd(symbol, 'BUY', baseUsd);
+                const record = { side: 'BUY', positionSide: "LONG", usd: baseUsd, price: first.price, qty: first.qty, ts: Date.now() };
+                placedOrders.push(record);
+                updateOrdersTable();
+                log('已下第一手 BUY', record);
+            } catch (e) {
+                log('下单失败', e);
+                running = false;
+                statusSpan.textContent = '错误停止'; return;
+            }
+
+            // 启动价格轮询，检测是否触发下一单（使用 setTimeout 递归）
+            let stepIndex = 1; // 已开手数
+            let lastPriceRef = placedOrders[0].price; // 用来比较涨跌
+            monitorLoop(symbol, lastPriceRef); // 首次调用
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (monitorTimeout) clearTimeout(monitorTimeout);
+            running = false;
+            statusSpan.textContent = '已停止'; log('策略停止');
+        });
+
+        // 市价平仓：尝试逐个下 reduceOnly 的反向市价单
+        closeAllBtn.addEventListener('click', async () => {
+            if (!placedOrders.length) return alert('没有记录的仓位可以尝试平仓');
+            const symbol = symbolInput.value.trim().toUpperCase();
+            for (let i = 0; i < placedOrders.length; i++) {
+                const o = placedOrders[i];
+                const closeSide = o.side === 'BUY' ? 'SELL' : 'BUY';
+                try {
+                    log('尝试平仓', o);
+                    await reduceClose(symbol, closeSide, o.positionSide, o.qty);
+                    log('平仓请求已发', o);
+                } catch (e) { log('平仓失败', e); }
+            }
+            placedOrders = [];
+            running = false;
+            if (monitorTimeout) clearTimeout(monitorTimeout);
+            updateOrdersTable();
+        });
+
+        // 页面加载时填入 localStorage
+        loadSaved();
+    </script>
+</body>
+
+</html>

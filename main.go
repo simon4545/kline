@@ -183,9 +183,12 @@ func main() {
 		if err != nil {
 			log.Fatal()
 		}
+		http.Handle("/", http.FileServer(http.Dir("./public")))
 		http.HandleFunc("/klines", handleKlineQuery(db))
 		http.HandleFunc("/symbols", handleSymbols())
 		http.HandleFunc("/hot", handleHotSymbols())
+		http.HandleFunc("/marketcap", handleMarketCap())
+		http.HandleFunc("/fapi/marketcap", handleFutureMarketCap())
 		http.HandleFunc("/stream", wp.Proxy) //proxy.ServeHTTP
 		// 拼接地址
 		addr := fmt.Sprintf(":%d", *port)

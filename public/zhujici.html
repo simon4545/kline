@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>助记词与 EVM 地址生成器（离线本地）</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #121822;
+      --muted: #8aa0b3;
+      --text: #e8f0f7;
+      --accent: #4da3ff;
+      --accent-2: #7cf29c;
+      --danger: #ff7a7a;
+      --border: #1e2733;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      display: grid; place-items: center; min-height: 100dvh; padding: 24px;
+    }
+    .wrap { width: min(920px, 100%); }
+    .card {
+      background: radial-gradient(1200px 600px at 100% -10%, #142033, transparent 60%),
+                  radial-gradient(1000px 500px at -20% 0%, #102932, transparent 55%),
+                  var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,0.02);
+    }
+    h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: .3px; }
+    p.sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 10px 0 18px; }
+    .btn {
+      appearance: none; border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+      color: var(--text); padding: 10px 14px; border-radius: 10px; cursor: pointer;
+      font-weight: 600; letter-spacing: .2px;
+    }
+    .btn:hover { border-color: #2a3a4d; }
+    .btn.accent { border-color: rgba(77,163,255,.5); box-shadow: 0 0 0 3px rgba(77,163,255,.12) inset; }
+    .btn.ghost { background: transparent; }
+    .btn.danger { border-color: rgba(255,122,122,.35); color: #ffdede; }
+    .stack { display: grid; gap: 8px; }
+    label { color: var(--muted); font-size: 13px; }
+    textarea, input[type=text] {
+      width: 100%; padding: 12px 12px; border-radius: 10px;
+      background: #0b111a; color: var(--text); border: 1px solid var(--border);
+      font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 820px) {
+      .grid { grid-template-columns: 1.2fr .8fr; }
+    }
+    .muted { color: var(--muted); }
+    .note { font-size: 13px; color: var(--muted); }
+    .kbd {
+      display: inline-block; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
+      background: #0b111a; font: 12px/20px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    .footer { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+    .path { padding: 6px 10px; border-radius: 8px; border: 1px dashed #284058; background: rgba(77,163,255,.05); font-size: 13px; }
+    .ok { color: var(--accent-2); }
+    .warn { color: var(--danger); }
+    .tiny { font-size: 12px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>助记词与 EVM 地址生成器</h1>
+    <p class="sub">离线本地生成 12 或 24 个英文单词的助记词，并展示对应的 Ethereum 地址（默认路径 <span class="kbd">m/44'/60'/0'/0/0</span>）。</p>
+
+    <div class="row">
+      <button class="btn accent" data-words="12">生成 12 词</button>
+      <button class="btn accent" data-words="24">生成 24 词</button>
+      <button class="btn ghost" id="copy-mnemonic">复制助记词</button>
+      <button class="btn ghost" id="copy-address">复制地址</button>
+      <button class="btn danger" id="wipe">清空屏幕</button>
+    </div>
+
+    <div class="grid">
+      <div class="stack">
+        <label for="mnemonic">助记词（BIP39，英文，空格分隔）</label>
+        <textarea id="mnemonic" placeholder="点击上方按钮生成，务必离线保存并手写备份"></textarea>
+      </div>
+      <div class="stack">
+        <label for="address">EVM 地址（EIP-55 校验格式）</label>
+        <input id="address" type="text" placeholder="0x..." readonly>
+        <div class="path">派生路径：<span class="kbd" id="path">m/44'/60'/0'/0/0</span></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="note">
+        <div class="ok">√ 所有计算在浏览器本地完成；不上传任何数据。</div>
+        <div class="warn">！安全提示：请在离线环境使用；不要截图/云同步；谨慎导入到钱包/转账前先小额测试。</div>
+      </div>
+      <div class="tiny muted">基于 <span class="kbd">ethers.js v6</span> · BIP39/BIP44 · 仅供学习与测试</div>
+    </div>
+  </div>
+</div>
+
+<!-- Ethers.js v6：如需完全离线使用，可将该脚本下载至本地并用相对路径替换 -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.15.0/dist/ethers.umd.min.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+  const mnemonicEl = $("#mnemonic");
+  const addrEl = $("#address");
+  const pathEl = $("#path");
+
+  // 默认派生路径（常见钱包使用）：m/44'/60'/0'/0/0
+  const DERIVATION_PATH = "m/44'/60'/0'/0/0";
+
+  async function generate(words) {
+    try {
+      // 12 词 -> 128 bit (16字节) 熵；24 词 -> 256 bit (32字节) 熵
+      const bytes = words === 24 ? 32 : 16;
+      const entropy = ethers.randomBytes(bytes);
+      const mnemonic = ethers.Mnemonic.fromEntropy(entropy); // BIP39 英文词表
+      const phrase = mnemonic.phrase;
+
+      // 通过助记词构建 HD 钱包，并使用默认以太路径派生第一个账户地址
+      const wallet = ethers.HDNodeWallet.fromPhrase(phrase, undefined, DERIVATION_PATH);
+      const address = wallet.address; // 已为 EIP-55 checksum
+
+      mnemonicEl.value = phrase;
+      addrEl.value = address;
+      pathEl.textContent = DERIVATION_PATH;
+    } catch (e) {
+      console.error(e);
+      alert("生成失败：" + (e && e.message ? e.message : e));
+    }
+  }
+
+  function copyText(el, label) {
+    if (!el.value) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(el.value).then(() => {
+        toast(label + "已复制");
+      }).catch(() => {
+        el.select(); el.setSelectionRange(0, 99999);
+        toast("已选中文本，按 Ctrl/Cmd+C 复制");
+      });
+    } else {
+      el.select(); el.setSelectionRange(0, 99999);
+      try { document.execCommand('copy'); toast(label + "已复制"); }
+      catch (err) { toast("复制失败，请手动复制"); }
+    }
+  }
+
+  // 简单 toast
+  let toastTimer;
+  function toast(msg) {
+    clearTimeout(toastTimer);
+    let t = document.getElementById("toast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "toast";
+      t.style.cssText = "position:fixed;left:50%;top:24px;transform:translateX(-50%);padding:10px 14px;border-radius:10px;border:1px solid #2a3a4d;background:#0b111a;color:#e8f0f7;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.35);";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = "1";
+    toastTimer = setTimeout(() => t.style.opacity = "0", 1400);
+  }
+
+  // 事件绑定
+  $$(".btn[data-words]").forEach(btn => {
+    btn.addEventListener("click", () => generate(parseInt(btn.dataset.words, 10)));
+  });
+  $("#copy-mnemonic").addEventListener("click", () => copyText(mnemonicEl, "助记词"));
+  $("#copy-address").addEventListener("click", () => copyText(addrEl, "地址"));
+  $("#wipe").addEventListener("click", () => {
+    mnemonicEl.value = ""; addrEl.value = "";
+    toast("已清空");
+  });
+
+  // 额外：允许用户手动粘贴助记词以查看对应地址（不主动上传）
+  mnemonicEl.addEventListener("input", () => {
+    const phrase = (mnemonicEl.value || "").trim().replace(/\s+/g, " ");
+    if (phrase.split(" ").length >= 12) {
+      try {
+        const wallet = ethers.HDNodeWallet.fromPhrase(phrase, undefined, DERIVATION_PATH);
+        addrEl.value = wallet.address;
+      } catch (e) {
+        // 无效助记词时忽略
+        addrEl.value = "";
+      }
+    } else {
+      addrEl.value = "";
+    }
+  });
+})();
+</script>
+</body>
+</html>

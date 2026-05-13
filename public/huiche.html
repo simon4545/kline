@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>币安合约币回撤查询</title>
+  <style>
+    body {
+      font-family: Arial;
+      padding: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th,
+    td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      cursor: pointer;
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>查询币安合约币从某时间的价格回撤</h2>
+
+  <label for="datetime">选择时间（整点）:</label>
+  <input type="datetime-local" id="datetime">
+  <button onclick="fetchSymbols()">查询</button>
+
+  <table id="resultTable">
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">币种</th>
+        <th onclick="sortTable(1)">回撤比例 (%)</th>
+        <th>指定时间价格</th>
+        <th>当前价格</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const BASE_URL = 'https://fapi.binance.com';
+    const getSymbolsFromBackend = async () => {
+      const res = await fetch("/api/symbols");
+      const data = await res.json();
+      // 假设返回数组形式：["BTCUSDT", "ETHUSDT", ...]
+      return data;
+    };
+    let fetchInProgress = false;
+
+    async function fetchSymbols() {
+      if (fetchInProgress) return;
+      fetchInProgress = true;
+      const datetime = document.getElementById('datetime').value;
+      if (!datetime) {
+        alert("请选择一个时间");
+        fetchInProgress = false;
+        return;
+      }
+
+      const timestamp = new Date(datetime).getTime();
+      const now = Date.now();
+      const hours = Math.floor((now - timestamp) / (1000 * 60 * 60));
+      if (hours <= 0) {
+        alert("时间必须早于当前时间");
+        fetchInProgress = false;
+        return;
+      }
+
+      document.querySelector("#resultTable tbody").innerHTML = ""; // 清空表格
+
+      try {
+        let symbols=await getSymbolsFromBackend();
+
+        for (let i = 0; i < symbols.length; i++) {
+          await fetchDrawdown(symbols[i], timestamp, hours);
+        }
+      } catch (err) {
+        console.error("获取 symbol 列表失败", err);
+        alert("获取币种列表失败");
+      }
+
+      fetchInProgress = false;
+    }
+
+    async function fetchDrawdown(symbol, timestamp, hours) {
+      try {
+        const endTime = Date.now();
+        const res = await fetch(`${BASE_URL}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${hours + 1}&endTime=${endTime}`);
+        const klines = await res.json();
+
+        if (!Array.isArray(klines) || klines.length < 2) return;
+
+        const oldPrice = parseFloat(klines[0][2]); // 第一个k线的高价
+        const currentPrice = parseFloat(klines[klines.length - 1][4]); // 最新k线的收盘价
+        const drawdown = ((oldPrice - currentPrice) / oldPrice) * 100;
+
+        updateTable({
+          symbol,
+          drawdown: drawdown.toFixed(2),
+          oldPrice: oldPrice.toFixed(8),
+          currentPrice: currentPrice.toFixed(8)
+        });
+      } catch (err) {
+        console.log(`获取 ${symbol} 数据失败`, err);
+      }
+    }
+
+    function updateTable(data) {
+      const tbody = document.querySelector("#resultTable tbody");
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${data.symbol}</td>
+        <td>${data.drawdown}</td>
+        <td>${data.oldPrice}</td>
+        <td>${data.currentPrice}</td>
+      `;
+      tbody.appendChild(row);
+
+      sortTable(1); // 默认按回撤排序
+    }
+
+    function sortTable(columnIndex) {
+      const table = document.getElementById("resultTable");
+      const rows = Array.from(table.rows).slice(1); // 排除表头
+      const tbody = table.tBodies[0];
+
+      const sorted = rows.sort((a, b) => {
+        const valA = a.cells[columnIndex].textContent;
+        const valB = b.cells[columnIndex].textContent;
+        return columnIndex === 1 ? parseFloat(valB) - parseFloat(valA) : valA.localeCompare(valB);
+      });
+
+      tbody.innerHTML = "";
+      sorted.forEach(row => tbody.appendChild(row));
+    }
+  </script>
+
+</body>
+
+</html>

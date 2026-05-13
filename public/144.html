@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>币安永续合约EMA形态扫描器</title>
+    <link rel="stylesheet" href="./static/style.css">
+    <script src="./static/binance.js"></script>
+    <script src="./static/technicalindicators.js"></script>
+    <style>
+        .kcanvas {
+            height: 150px;
+        }
+
+        #results {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .result {
+            width: 80%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        @media (min-width: 768px) {
+            .result {
+                width: 18%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>币安永续合约EMA形态扫描器</h1>
+
+    <div id="controls">
+        <div class="param-group">
+            <label>
+                时间周期:
+                <select name="requireInterval" id="requireInterval">
+                    <option value="1" selected>强势</option>
+                    <option value="2">中势</option>
+                </select>
+            </label>
+        </div>
+
+        <button id="scanBtn">扫描EMA30</button>
+    </div>
+
+    <div id="progress">
+        <div id="progress-bar"></div>
+    </div>
+    <div id="status">准备就绪</div>
+
+    <h2>结果 (<span id="matchCount">0</span>)</h2>
+    <div id="results"></div>
+
+    <script>
+        let timeInterval = "1";
+        let smallperiod = "15m";
+        let largeperiod = "1h";
+        document.addEventListener('DOMContentLoaded', function () {
+            const scanBtn = document.getElementById('scanBtn');
+            const progressBar = document.getElementById('progress-bar');
+            const statusElem = document.getElementById('status');
+            const resultsElem = document.getElementById('results');
+            const matchCountElem = document.getElementById('matchCount');
+            const intervalElem = document.getElementById("requireInterval");
+
+            intervalElem.addEventListener("change", (event) => {
+                timeInterval = event.target.value;
+            });
+
+            scanBtn.addEventListener('click', async function () {
+                scanBtn.disabled = true;
+                resultsElem.innerHTML = '';
+                matchCountElem.textContent = '0';
+                statusElem.textContent = '正在获取合约列表...';
+                progressBar.style.width = '0%';
+
+                try {
+                    const contracts = await fetchMyContracts();
+                    statusElem.textContent = `找到 ${contracts.length} 个合约代币`;
+
+                    const allResults = [];
+                    let processed = 0;
+
+                    if (timeInterval == "1") {
+                        smallperiod = "15m";
+                        largeperiod = "1h";
+                    } else {
+                        smallperiod = "1h";
+                        largeperiod = "4h";
+                    }
+                    let scontracts=Object.values(contracts)
+                    for (const symbol of contracts) {
+                        await Promise.all(scontracts.splice(0, 3).map(async function (symbol) {
+                            const progress = (processed / contracts.length) * 100;
+                            progressBar.style.width = `${progress}%`;
+                            statusElem.textContent = `处理中: ${symbol} (${processed + 1}/${contracts.length})`;
+
+                            const klines = await fetchMyKlines(symbol, smallperiod, 300);
+                            if (!klines || klines.length < 150) {
+                                processed++;
+                                return;
+                            }
+                            const klines1h = await fetchMyKlines(symbol, largeperiod, 300);
+                            if (!klines1h || klines1h.length < 150) {
+                                processed++;
+                                return;
+                            }
+                            const prices = klines.map(k => parseFloat(k[4]));
+                            const prices1h = klines1h.map(k => parseFloat(k[4]));
+                            const results = checkema144(symbol, prices, prices1h);
+
+                            if (results) {
+                                allResults.push(results);
+                                renderResults(results);
+                            }
+
+                            processed++;
+                        }))
+                    }
+
+                    matchCountElem.textContent = allResults.length;
+
+                    if (allResults.length === 0) {
+                        resultsElem.innerHTML = '<div class="no-results">未找到符合条件的形态</div>';
+                    }
+
+                    statusElem.textContent = `扫描完成! 找到 ${allResults.length} 个形态`;
+
+                } catch (error) {
+                    console.error('扫描失败:', error);
+                    statusElem.textContent = `错误: ${error.message}`;
+                } finally {
+                    scanBtn.disabled = false;
+                }
+            });
+
+            function checkema144(symbol, prices, prices1h) {
+                const rsic = EMA.calculate({ period: 144, values: prices });
+                const rsic1h = EMA.calculate({ period: 144, values: prices1h });
+                let last = prices.at(-1);
+                let emavalue = rsic.at(-1);
+                let ema1hvalue = rsic1h.at(-1);
+                let ema1hslice = rsic1h.slice(-10, -1)
+                const accresult = ema1hslice.reduce((acc, curr, index) => {
+                    if (index === 0) return acc;
+                    return acc + (curr > ema1hslice[index - 1] ? 1 : 0);
+                }, 1);
+                if (accresult >= 9 && (last < emavalue && last > ema1hvalue)) {
+                    return {
+                        symbol,
+                        ema1: emavalue,
+                        ema2: ema1hvalue,
+                        end: last,
+                        prices: prices.slice(-20)
+                    }
+                } else {
+                    return null;
+                }
+            }
+
+            function renderResults(result) {
+                const resultElem = document.createElement('div');
+                resultElem.className = 'result';
+                resultElem.innerHTML = `
+                            <div class="details">
+                                <div class="result-header">
+                                <div class="symbol">${result.symbol}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">ema144-${smallperiod}</div>
+                                <div class="detail-value">$${result.ema1.toFixed(4)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">ema144-${largeperiod}</div>
+                                <div class="detail-value">$${result.ema2.toFixed(4)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">当前价格</div>
+                                <div class="detail-value">$${result.end.toFixed(4)}</div>
+                            </div>
+
+                        </div>
+                        <div class="chart-container">
+                            <canvas class="kcanvas" id="chart-${result.symbol}"></canvas>
+                        </div>
+                    `;
+
+                resultsElem.appendChild(resultElem);
+
+                // 渲染图表
+                setTimeout(() => { renderChart(result, document.getElementById(`chart-${result.symbol}`)); }, 100);
+
+                // 更新匹配计数
+                matchCountElem.textContent = parseInt(matchCountElem.textContent) + 1;
+            }
+
+            // 渲染K线图
+            function renderChart(result, canvas) {
+                const ctx = canvas.getContext('2d');
+                const width = canvas.width;
+                const height = canvas.height;
+                const padding = 40;
+                const chartWidth = width - padding * 2;
+                const chartHeight = height - padding * 2;
+
+                ctx.clearRect(0, 0, width, height);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+
+                const patternPrices = result.prices;
+
+                // 计算价格比例
+                const maxPrice = Math.max(...patternPrices);
+                const minPrice = Math.min(...patternPrices);
+                const priceRange = maxPrice - minPrice;
+
+                ctx.strokeStyle = '#ecf0f1';
+                ctx.lineWidth = 1;
+
+                // 水平网格线
+                for (let i = 0; i <= 4; i++) {
+                    const y = padding + (4 - i) * (chartHeight / 4);
+                    ctx.beginPath();
+                    ctx.moveTo(padding, y);
+                    ctx.lineTo(width - padding, y);
+                    ctx.stroke();
+
+                }
+
+                const pointCount = patternPrices.length;
+                for (let i = 0; i < pointCount; i += Math.floor(pointCount / 5)) {
+                    const x = padding + (i / (pointCount - 1)) * chartWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(x, padding);
+                    ctx.lineTo(x, height - padding);
+                    ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.strokeStyle = '#3498db';
+                ctx.lineWidth = 2;
+
+                patternPrices.forEach((price, i) => {
+                    const x = padding + (i / (pointCount - 1)) * chartWidth;
+                    const y = padding + chartHeight - ((price - minPrice) / priceRange * chartHeight);
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.stroke();
+
+                ctx.strokeStyle = '#bdc3c7';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(padding, padding, chartWidth, chartHeight);
+            }
+        });
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>币安 U 本位合约 24h 成交量排行</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      padding: 20px;
+    }
+
+    h2 {
+      margin-bottom: 10px;
+    }
+
+    button {
+      margin-right: 10px;
+      padding: 6px 14px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      background: #333;
+      color: #eee;
+    }
+
+    button.active {
+      background: #0a84ff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+
+    th, td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #333;
+      text-align: right;
+    }
+
+    th {
+      background: #222;
+      user-select: none;
+    }
+
+    th.sortable {
+      cursor: pointer;
+    }
+
+    th:first-child,
+    td:first-child,
+    th:nth-child(2),
+    td:nth-child(2) {
+      text-align: left;
+    }
+
+    .arrow {
+      margin-left: 4px;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>币安 U 本位永续合约 24h 成交量排行</h2>
+
+<!-- 筛选按钮 -->
+<div>
+  <button id="btnAll" class="active">全部</button>
+  <button id="btnUp">只选上涨</button>
+  <button id="btnDown">只选下跌</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>合约</th>
+      <th>24h 成交额 (USDT)</th>
+      <th>最新价</th>
+      <th id="thChange" class="sortable">
+        24h 涨跌 <span id="sortArrow" class="arrow">▼</span>
+      </th>
+    </tr>
+  </thead>
+  <tbody id="tbody"></tbody>
+</table>
+
+<script>
+/* ================== 配置 ================== */
+
+let excludeList = [
+  'ETHUSDT','BTCUSDT','BNBUSDT','SOLUSDT','XRPUSDT','AVAXUSDT','ADAUSDT',
+  'BCHUSDT','SUIUSDT','DOGEUSDT','LINKUSDT','TRXUSDT','UNIUSDT','HYPEUSDT',
+  'DOTUSDT','1000PEPEUSDT','NEARUSDT','ENAUSDT','ASTERUSDT','ZECUSDT',
+  'LTCUSDT','FILUSDT','AAVEUSDT','SXPUSDT','CRVUSDT','PAXGUSDT','ARBUSDT',
+  'APTUSDT','OPUSDT','TRUMPUSDT','ICPUSDT','DASHUSDT','ETCUSDT',
+  'SEIUSDT','TIAUSDT','METISUSDT'
+];
+
+const MAX_ROWS = 50;
+const CLOSE_TIME_LIMIT = 1766631660000;
+
+/* ================== 状态 ================== */
+
+let allData = [];
+let filterMode = 'all';      // all | up | down
+let sortByChange = false;   // false = 成交额, true = 涨跌
+let sortDirection = 'desc'; // desc | asc
+
+/* ================== 数据加载 ================== */
+
+async function loadData() {
+  const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
+  const data = await res.json();
+
+  allData = data.filter(d =>
+    d.symbol.endsWith('USDT') &&
+    !excludeList.includes(d.symbol) &&
+    d.closeTime > CLOSE_TIME_LIMIT
+  );
+
+  render();
+}
+
+/* ================== 渲染 ================== */
+
+function render() {
+  let data = [...allData];
+
+  // 涨跌筛选
+  if (filterMode === 'up') {
+    data = data.filter(d => Number(d.priceChangePercent) > 0);
+  } else if (filterMode === 'down') {
+    data = data.filter(d => Number(d.priceChangePercent) < 0);
+  }
+
+  // 排序
+  if (sortByChange) {
+    data.sort((a, b) => {
+      const diff = Number(a.priceChangePercent) - Number(b.priceChangePercent);
+      return sortDirection === 'asc' ? diff : -diff;
+    });
+  } else {
+    data.sort((a, b) => Number(b.quoteVolume) - Number(a.quoteVolume));
+  }
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+
+  data.slice(0, MAX_ROWS).forEach((d, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${d.symbol}</td>
+      <td>${(Number(d.quoteVolume) / 1e8).toFixed(2)} 亿</td>
+      <td>${d.lastPrice}</td>
+      <td style="color:${d.priceChangePercent >= 0 ? '#0f0' : '#f00'}">
+        ${d.priceChangePercent}%
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ================== 事件 ================== */
+
+// 筛选按钮
+function setMode(mode) {
+  filterMode = mode;
+  document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  document.getElementById(
+    mode === 'all' ? 'btnAll' : mode === 'up' ? 'btnUp' : 'btnDown'
+  ).classList.add('active');
+  render();
+}
+
+btnAll.onclick = () => setMode('all');
+btnUp.onclick = () => setMode('up');
+btnDown.onclick = () => setMode('down');
+
+// 涨跌排序
+thChange.onclick = () => {
+  sortByChange = true;
+  sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
+  sortArrow.textContent = sortDirection === 'desc' ? '▼' : '▲';
+  render();
+};
+
+/* ================== 启动 ================== */
+
+loadData();
+</script>
+
+</body>
+</html>

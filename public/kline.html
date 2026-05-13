@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>币安永续合约K线图表</title>
+    <link rel="stylesheet" href="./static/style.css">
+    <link rel="stylesheet" href="./static/kline.css">
+    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="./static/binance.js"></script>
+    <script src="./static/technicalindicators.js"></script>
+</head>
+<body>
+    <div id="fixed-header">
+        <div class="timeframe-buttons">
+            <button class="timeframe-btn" data-interval="4h">4小时</button>
+            <button class="timeframe-btn" data-interval="1d">天</button>
+            <button class="timeframe-btn" data-interval="1w">周</button>
+            <div class="indicator-toggles">
+                <label class="toggle-label">
+                    <span>EMA</span>
+                    <input type="checkbox" id="toggle-ema" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+                <label class="toggle-label">
+                    <span>MA</span>
+                    <input type="checkbox" id="toggle-ma" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+                <label class="toggle-label">
+                    <span>布林带</span>
+                    <input type="checkbox" id="toggle-bb" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="filter-toggles">
+                <label class="toggle-label">
+                    <input type="checkbox" id="filter-favorites">
+                    <span class="toggle-slider"></span>
+                    <span>只看收藏</span>
+                </label>
+                <label class="toggle-label">
+                    <input type="checkbox" id="toggle-chart" checked>
+                    <span class="toggle-slider"></span>
+                    <span>显示K线</span>
+                </label>
+            </div>
+            <span id="favorites-count" class="favorites-count">已收藏 0 个</span>
+        </div>
+    </div>
+    
+    <div id="status">请选择时间级别</div>
+    <div id="loading" style="display: none;">正在加载数据...</div>
+    
+    <div id="charts-container"></div>
+
+    <script src="./static/kline.js"></script>
+</body>
+</html>

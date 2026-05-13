@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binance ETH 抄底器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .input-group {
+            margin: 10px 0;
+        }
+
+        label {
+            display: inline-block;
+            width: 150px;
+        }
+
+        input {
+            padding: 5px;
+            width: 200px;
+        }
+
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        #logs {
+            margin-top: 20px;
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>Binance以太抄底器</h2>
+        <div class="input-group">
+            <label>API Key:</label>
+            <input type="text" id="apiKey" value="" placeholder="Enter API Key">
+        </div>
+        <div class="input-group">
+            <label>API Secret:</label>
+            <input type="text" id="apiSecret" value="" placeholder="Enter API Secret">
+        </div>
+        <div class="input-group">
+            <label>时间窗口 (minutes):</label>
+            <input type="number" id="timeWindow" placeholder="e.g., 5" min="5" value="10">
+        </div>
+        <div class="input-group">
+            <label>下跌幅度 (%):</label>
+            <input type="number" id="priceDrop" placeholder="e.g., 5" min="1" step="0.1" value="3">
+        </div>
+        <div class="input-group">
+            <label>仓位 (eth):</label>
+            <input type="number" id="amount" placeholder="e.g., 5" min="0.01" step="0.01" value="0.01">
+        </div>
+        <div class="input-group">
+            <button onclick="startMonitoring()">开始监控</button>
+            <button onclick="stopMonitoring()">停止监控</button>
+            <button onclick="saveInputs()">保存配置</button>
+        </div>
+        <div id="status">状态: 未连接</div>
+        <div id="logs"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script>
+        let ws = null;
+        let priceHistory = [];
+        let isMonitoring = false;
+        let lastPingTime = 0;
+        let hasOrder = false;
+        const RECONNECT_INTERVAL = 5000;
+        const HEARTBEAT_TIMEOUT = 1000 * 60 * 30;
+        const MAX_PRICE_HISTORY = 10 * 60 * 20; // Store 1 hour of prices (assuming 1s updates)
+
+        function log(message) {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            logs.innerHTML += `[${timestamp}] ${message}<br>`;
+            // logs.scrollTop = logs.scrollHeight;
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').innerText = `Status: ${message}`;
+        }
+
+        function saveInputs() {
+            const inputs = {
+                apiKey: document.getElementById('apiKey').value,
+                apiSecret: document.getElementById('apiSecret').value,
+                timeWindow: document.getElementById('timeWindow').value,
+                priceDrop: document.getElementById('priceDrop').value,
+                amount: document.getElementById('amount').value
+            };
+            localStorage.setItem('binanceMonitorInputs', JSON.stringify(inputs));
+            log('Input values saved to localStorage');
+        }
+
+        function loadInputs() {
+            const savedInputs = localStorage.getItem('binanceMonitorInputs');
+            if (savedInputs) {
+                const inputs = JSON.parse(savedInputs);
+                document.getElementById('apiKey').value = inputs.apiKey || '';
+                document.getElementById('apiSecret').value = inputs.apiSecret || '';
+                document.getElementById('timeWindow').value = inputs.timeWindow || '';
+                document.getElementById('priceDrop').value = inputs.priceDrop || '';
+                document.getElementById('amount').value = inputs.amount || '';
+                log('Input values loaded from localStorage');
+            }
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket('wss://fstream.binance.com/ws/ethusdt@aggTrade');
+
+            ws.onopen = () => {
+                log('WebSocket 已连接');
+                updateStatus('成功连接Binance WebSocket');
+                lastPingTime = Date.now();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                // Handle ping frame
+                if (data.ping) {
+                    ws.send(JSON.stringify({ pong: data.ping }));
+                    lastPingTime = Date.now();
+                    log('Responded to ping');
+                    return;
+                }
+
+                // Handle trade data
+                if (data.e === 'aggTrade') {
+                    const price = parseFloat(data.p);
+                    const timestamp = data.T;
+                    processPriceData(price, timestamp);
+                }
+            };
+
+            ws.onerror = (error) => {
+                log(`WebSocket 出错: ${error}`);
+                updateStatus('WebSocket error');
+                reconnect();
+            };
+
+            ws.onclose = () => {
+                log('WebSocket 关闭');
+                updateStatus('Disconnected');
+                if (isMonitoring) {
+                    reconnect();
+                }
+            };
+        }
+
+        function reconnect() {
+            if (!isMonitoring) return;
+            log('Attempting to reconnect...');
+            setTimeout(() => {
+                if (isMonitoring) {
+                    connectWebSocket();
+                }
+            }, RECONNECT_INTERVAL);
+        }
+
+        function checkHeartbeat() {
+            if (Date.now() - lastPingTime > HEARTBEAT_TIMEOUT) {
+                log('Heartbeat timeout, reconnecting...');
+                ws.close();
+            }
+        }
+
+        function processPriceData(price, timestamp) {
+            priceHistory.push({ price, timestamp });
+
+            // Keep only last hour of data
+            while (priceHistory.length > MAX_PRICE_HISTORY) {
+                priceHistory.shift();
+            }
+
+            // Check price drop
+            const timeWindow = parseFloat(document.getElementById('timeWindow').value) * 60 * 1000;
+            const priceDrop = parseFloat(document.getElementById('priceDrop').value) / 100;
+            const amount = document.getElementById('amount').value;
+            const cutoffTime = timestamp - timeWindow;
+
+            // Filter prices within time window
+            const recentPrices = priceHistory.filter(p => p.timestamp >= cutoffTime);
+
+            if (recentPrices.length > 0) {
+                const maxPrice = Math.max(...recentPrices.map(p => p.price));
+                const dropPercentage = (maxPrice - price) / maxPrice;
+                if (priceHistory.length % 100 == 0) {
+                    log(`当前价格: ${price}, 周期内最高价: ${maxPrice}, 跌幅: ${(dropPercentage * 100).toFixed(2)}%`);
+                }
+                if (dropPercentage >= priceDrop) {
+                    executeBuyOrder(price);
+                }
+            }
+        }
+
+        async function executeBuyOrder(price) {
+            if (hasOrder) return;
+            hasOrder = true;
+            const apiKey = document.getElementById('apiKey').value;
+            const apiSecret = document.getElementById('apiSecret').value;
+            const symbol = 'ETHUSDT';
+            const quantity = document.getElementById('amount').value;
+            const timestamp = Date.now();
+
+            const params = `symbol=${symbol}&side=BUY&positionSide=LONG&type=MARKET&quantity=${quantity}&timestamp=${timestamp}&recvWindow=5000`;
+            const signature = CryptoJS.HmacSHA256(params, apiSecret).toString(CryptoJS.enc.Hex);
+
+            const request = {
+                id: crypto.randomUUID(),
+                method: 'order.place',
+                params: {
+                    apiKey,
+                    symbol,
+                    side: 'BUY',
+                    positionSide: "LONG",
+                    type: 'MARKET',
+                    quantity,
+                    timestamp,
+                    recvWindow: 5000,
+                    signature
+                }
+            };
+
+            try {
+                // Using REST API for order placement as WebSocket order placement requires separate connection
+                const response = await fetch('https://fapi.binance.com/fapi/v1/order', {
+                    method: 'POST',
+                    headers: {
+                        'X-MBX-APIKEY': apiKey,
+                        'Content-Type': "application/x-www-form-urlencoded;"
+                    },
+                    body: new URLSearchParams(request.params)
+                });
+
+                const result = await response.json();
+                log(`Buy order placed successfully at price ${price} for ${quantity} ETH`, result);
+
+            } catch (error) {
+                log(`Order placement error: ${error}`);
+            }
+        }
+
+        function startMonitoring() {
+            const apiKey = document.getElementById('apiKey').value;
+            const apiSecret = document.getElementById('apiSecret').value;
+            const timeWindow = document.getElementById('timeWindow').value;
+            const priceDrop = document.getElementById('priceDrop').value;
+
+            if (!apiKey || !apiSecret || !timeWindow || !priceDrop) {
+                log('Please fill in all fields');
+                return;
+            }
+
+            isMonitoring = true;
+            priceHistory = [];
+            connectWebSocket();
+            setInterval(checkHeartbeat, 10000);
+            log('Monitoring started');
+        }
+
+        function stopMonitoring() {
+            isMonitoring = false;
+            if (ws) {
+                ws.close();
+            }
+            log('Monitoring stopped');
+        }
+
+        // Initialize WebSocket connection
+        window.onload = () => {
+            loadInputs();
+            log('Application loaded. Enter credentials and parameters to start monitoring.');
+        };
+    </script>
+</body>
+
+</html>

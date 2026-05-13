@@ -14,6 +14,72 @@ import (
 	"gorm.io/gorm"
 )
 
+// fetchMarketCapData 调用币安 API 获取 market cap 数据
+func fetchMarketCapData() ([]byte, error) {
+	resp, err := http.Get("https://www.binance.com/bapi/apex/v1/friendly/apex/marketing/complianceSymbolList")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// fetchFutureMarketCapData 调用币安期货 API 获取 market cap 数据
+func fetchFutureMarketCapData() ([]byte, error) {
+	resp, err := http.Get("https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// handleMarketCap 返回 spot market cap 数据
+func handleMarketCap() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 允许跨域
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			return // 处理预检请求
+		}
+
+		data, err := fetchMarketCapData()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("fetch error: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+	}
+}
+
+// handleFutureMarketCap 返回 futures market cap 数据
+func handleFutureMarketCap() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 允许跨域
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			return // 处理预检请求
+		}
+
+		data, err := fetchFutureMarketCapData()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("fetch error: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+	}
+}
+
 func gzipMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {

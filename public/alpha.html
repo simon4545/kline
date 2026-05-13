@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>币安永续合约K线图表</title>
+    <link rel="stylesheet" href="./static/style.css">
+    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="./static/binance.js"></script>
+    <script src="./static/technicalindicators.js"></script>
+    <style>
+        .timeframe-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        
+        .timeframe-btn {
+            padding: 10px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .timeframe-btn:hover {
+            background-color: #2980b9;
+        }
+        
+        .timeframe-btn.active {
+            background-color: #2ecc71;
+        }
+        
+        #charts-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        
+        .chart-wrapper {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        @media (min-width: 576px) {
+            .chart-wrapper {
+                width: 100%;
+            }
+        }
+        
+        @media (min-width: 768px) {
+            .chart-wrapper {
+                width: 48%;
+            }
+        }
+        
+        @media (min-width: 1170px) {
+            .chart-wrapper {
+                width: 32%;
+            }
+        }
+        
+        @media (min-width: 1600px) {
+            .chart-wrapper {
+                width: 24%;
+            }
+        }
+        
+        .chart-header {
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        #loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+        
+        #status {
+            text-align: center;
+            padding: 10px;
+            margin: 10px 0;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <h1>币安永续合约K线图表</h1>
+    
+    <div class="timeframe-buttons">
+        <button class="timeframe-btn" data-interval="15m">15分钟</button>
+        <button class="timeframe-btn" data-interval="1h">1小时</button>
+        <button class="timeframe-btn" data-interval="4h">4小时</button>
+        <button class="timeframe-btn" data-interval="1d">一天</button>
+        <button class="timeframe-btn" data-interval="3d">三天</button>
+    </div>
+    
+    <div style="text-align: center; margin: 10px 0;">
+        <button id="toggle-ema" style="padding: 5px 10px; font-size: 14px;">隐藏EMA指标</button>
+    </div>
+    
+    <div id="status">请选择时间级别</div>
+    <div id="loading" style="display: none;">正在加载数据...</div>
+    
+    <div id="charts-container"></div>
+
+    <script>
+        // 存储所有创建的图表实例
+        const charts = {};
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取所有时间级别按钮
+            const timeframeButtons = document.querySelectorAll('.timeframe-btn');
+            
+            // 为每个按钮添加点击事件监听器
+            timeframeButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // 移除所有按钮的 active 类
+                    timeframeButtons.forEach(btn => btn.classList.remove('active'));
+                    
+                    // 为当前点击的按钮添加 active 类
+                    this.classList.add('active');
+                    
+                    // 获取选中的时间级别
+                    const interval = this.getAttribute('data-interval');
+                    
+                    // 加载对应时间级别的数据
+                    loadCharts(interval);
+                });
+            });
+            
+            // EMA指标切换按钮
+            const toggleEmaButton = document.getElementById('toggle-ema');
+            let emaVisible = true;
+            
+            toggleEmaButton.addEventListener('click', function() {
+                emaVisible = !emaVisible;
+                toggleEmaButton.textContent = emaVisible ? '隐藏EMA指标' : '显示EMA指标';
+                
+                // 这里可以添加切换EMA显示的逻辑
+                // 由于我们每次重新创建图表，这个功能需要在图表渲染时实现
+            });
+        });
+        
+        // 限制同时加载的图表数量
+        const MAX_CONCURRENT_CHARTS = 2;
+        
+        // 当前选中的时间级别
+        let currentInterval = null;
+        
+        // 加载图表的主函数
+        async function loadCharts(interval) {
+            // 如果重复点击同一个时间级别，不重新加载
+            if (currentInterval === interval) {
+                return;
+            }
+            
+            currentInterval = interval;
+            
+            const statusElement = document.getElementById('status');
+            const loadingElement = document.getElementById('loading');
+            const chartsContainer = document.getElementById('charts-container');
+            
+            // 清理之前的图表
+            Object.keys(charts).forEach(symbol => {
+                if (charts[symbol] && typeof charts[symbol].remove === 'function') {
+                    charts[symbol].remove();
+                }
+            });
+            
+            // 清空图表对象
+            Object.keys(charts).forEach(key => delete charts[key]);
+            
+            // 显示加载状态
+            loadingElement.style.display = 'block';
+            statusElement.textContent = `正在获取合约列表...`;
+            chartsContainer.innerHTML = '';
+            
+            try {
+                // 获取合约列表
+                const contracts = await fetchMyAlpha();
+                statusElement.textContent = `找到 ${contracts.length} 个合约代币，正在加载数据...`;
+                
+                // 如果没有合约，显示提示信息
+                if (!contracts || contracts.length === 0) {
+                    chartsContainer.innerHTML = '<div style="text-align: center; width: 100%; padding: 20px;">未找到合约数据</div>';
+                    statusElement.textContent = '未找到合约数据';
+                    loadingElement.style.display = 'none';
+                    return;
+                }
+                
+                // 清空图表容器
+                chartsContainer.innerHTML = '';
+                
+                // 限制同时处理的图表数量
+                let loadedCharts = 0;
+                const totalCharts = contracts.length
+                
+                // 创建一个处理图表的函数
+                const processChart = async (symbol) => {
+                    try {
+                        // 获取K线数据
+                        const klines = await fetchAlphaKlines(symbol, interval, 500);
+                        
+                        if (klines && klines.length > 0) {
+                            // 创建图表容器
+                            const chartWrapper = document.createElement('div');
+                            chartWrapper.className = 'chart-wrapper';
+                            chartWrapper.innerHTML = `
+                                <div class="chart-header">${symbol}</div>
+                                <div class="chart-container" id="chart-${symbol}"></div>
+                            `;
+                            chartsContainer.appendChild(chartWrapper);
+                            
+                            // 渲染图表
+                            renderChart(symbol, klines, interval);
+                            
+                            loadedCharts++;
+                            statusElement.textContent = `正在加载图表 ${loadedCharts}/${totalCharts}...`;
+                        }
+                    } catch (error) {
+                        console.error(`加载 ${symbol} 的数据失败:`, error);
+                    }
+                };
+                
+                // 分批处理图表以避免浏览器过载
+                const processChartsInBatches = async (symbols, batchSize) => {
+                    for (let i = 0; i < symbols.length; i += batchSize) {
+                        const batch = symbols.slice(i, i + batchSize);
+                        await Promise.all(batch.map(processChart));
+                    }
+                };
+                
+                // 只处理前20个合约
+                const symbolsToProcess = contracts.slice(0);
+                
+                // 分批处理图表
+                await processChartsInBatches(symbolsToProcess, MAX_CONCURRENT_CHARTS);
+                
+                statusElement.textContent = `加载完成，共显示 ${chartsContainer.children.length} 个图表`;
+            } catch (error) {
+                console.error('加载图表失败:', error);
+                statusElement.textContent = `加载失败: ${error.message}`;
+            } finally {
+                // 隐藏加载状态
+                loadingElement.style.display = 'none';
+            }
+        }
+        
+        // 页面卸载时清理图表
+        window.addEventListener('beforeunload', function() {
+            Object.keys(charts).forEach(symbol => {
+                if (charts[symbol] && typeof charts[symbol].remove === 'function') {
+                    charts[symbol].remove();
+                }
+            });
+        });
+        
+        // 处理窗口大小调整
+        window.addEventListener('resize', function() {
+            Object.keys(charts).forEach(symbol => {
+                const chart = charts[symbol];
+                const chartContainer = document.getElementById(`chart-${symbol}`);
+                if (chart && chartContainer) {
+                    chart.resize(chartContainer.clientWidth, 400);
+                }
+            });
+        });
+        
+        // 渲染单个图表的函数
+        function renderChart(symbol, klines, interval) {
+            // 获取图表容器
+            const chartContainer = document.getElementById(`chart-${symbol}`);
+            if (!chartContainer) return;
+            
+            // 清空容器
+            chartContainer.innerHTML = '';
+            
+            // 将K线数据转换为图表所需的格式
+            const chartData = klines.map(kline => ({
+                time: kline[0] / 1000, // 转换为秒
+                open: parseFloat(kline[1]),
+                high: parseFloat(kline[2]),
+                low: parseFloat(kline[3]),
+                close: parseFloat(kline[4])
+            }));
+            
+            // 创建图表
+            const chart = LightweightCharts.createChart(chartContainer, {
+                width: chartContainer.clientWidth,
+                height: 400,
+                layout: {
+                    backgroundColor: '#ffffff',
+                    textColor: 'rgba(33, 56, 77, 1)',
+                },
+                grid: {
+                    vertLines: {
+                        color: 'rgba(197, 203, 206, 0.5)',
+                    },
+                    horzLines: {
+                        color: 'rgba(197, 203, 206, 0.5)',
+                    },
+                },
+                timeScale: {
+                    timeVisible: true,
+                    secondsVisible: false,
+                }
+            });
+            
+            // 添加K线系列
+            const candlestickSeries = chart.addCandlestickSeries({
+                upColor: '#26a69a',
+                downColor: '#ef5350',
+                borderDownColor: '#ef5350',
+                borderUpColor: '#26a69a',
+                wickDownColor: '#ef5350',
+                wickUpColor: '#26a69a',
+            });
+            
+            // 设置K线数据
+            candlestickSeries.setData(chartData);
+            
+            // 计算并添加EMA指标
+            const closes = chartData.map(d => d.close);
+            renderEma(chart,25,closes,chartData);
+            renderEma(chart,50,closes,chartData);
+            // 调整图表以适应数据
+            // chart.timeScale().fitContent();
+            // 只显示最后100根
+            const total = chartData.length;
+            const visibleStart = chartData[total - 60].time;
+            const visibleEnd = chartData[total - 1].time;
+
+            chart.timeScale().setVisibleRange({
+                from: visibleStart,
+                to: visibleEnd,
+            });
+            // 存储图表实例
+            charts[symbol] = chart;
+        }
+        function renderEma(chart,period,closes,chartData){
+            const ema169 = EMA.calculate({ period: period, values: closes });
+            const ema169Data = chartData.slice(period - 1).map((d, i) => ({
+                time: d.time,
+                value: ema169[i]
+            }));
+            let color=period<35?'#eaaa42':'#a691ed';
+            const ema169Series = chart.addLineSeries({
+                color: color,
+                lineWidth: 1,
+                // title: `EMA ${period}`
+            });
+            ema169Series.setData(ema169Data);
+        }
+    </script>
+</body>
+</html>

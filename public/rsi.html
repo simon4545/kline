@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>USDT合约币种 RSI 可视化</title>
+    <style>
+        canvas {
+            border: 1px solid #ccc;
+            display: block;
+            margin: 20px auto;
+        }
+    </style>
+    <script src="static/technicalindicators.js"></script>
+</head>
+
+<body>
+    <h2 style="text-align:center;">币种 RSI（4小时级别）</h2>
+    <canvas id="rsiCanvas" width="800" height="800"></canvas>
+
+    <script>
+        const canvas = document.getElementById("rsiCanvas");
+        const ctx = canvas.getContext("2d");
+        const width = canvas.width;
+        const height = canvas.height;
+        const drawRSIPoint = (item) => {
+            const shortSymbol = item.symbol.replace(/USDT$/, '');
+            const x = Math.random() * width * 0.9;
+            const y = height - (item.rsi / 100) * height;
+
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = "rgba(50, 150, 250, 0.7)";
+            ctx.fill();
+
+            ctx.fillStyle = "black";
+            ctx.font = "10px Arial";
+            ctx.fillText(shortSymbol, x + 5, y - 5);
+        };
+
+        const clearAndDrawBaseLines = () => {
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = "12px Arial";
+            ctx.strokeStyle = "#aaa";
+            ctx.setLineDash([5, 5]);
+            [30, 50, 70, 80].forEach(level => {
+                const y = height - (level / 100) * height;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+                ctx.fillText(`${level}`, 5, y - 2);
+            });
+            ctx.setLineDash([]);
+        };
+       
+        const getSymbolsFromBackend = async () => {
+            const res = await fetch("/api/symbols");
+            const data = await res.json();
+            // 假设返回数组形式：["BTCUSDT", "ETHUSDT", ...]
+            return data;
+        };
+
+        const getKlines = async (symbol) => {
+            const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=4h&limit=100`;
+            const res = await fetch(url);
+            const data = await res.json();
+            return data.map(d => parseFloat(d[4])); // 收盘价
+        };
+
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+        const main = async () => {
+            const symbols = await getSymbolsFromBackend();
+            const rsiData = [];
+
+            const maxConcurrency = 3;
+            let currentIndex = 0;
+
+            const total = symbols.length;
+
+            const processBatch = async () => {
+                const batch = [];
+
+                for (let i = 0; i < maxConcurrency && currentIndex < total; i++) {
+                    const symbol = symbols[currentIndex++];
+                    const task = getKlines(symbol)
+                        .then(closes => {
+                            const rsic = RSI.calculate({ period: 14, values: closes });
+                            console.log(symbol,rsic.at(-1));
+                            // const rsi = RSI(closes.slice(-15));
+                            const data = { symbol, rsi: rsic.at(-1) };
+                            rsiData.push(data);
+                            drawRSIPoint(data); // ✅ 逐个绘制 RSI 点
+                        })
+                        .catch(err => console.warn(`拉取 ${symbol} 失败`, err));
+
+                    batch.push(task);
+                }
+
+                await Promise.all(batch);
+                await sleep(200); // ✅ 暂停 200ms
+            };
+
+            // 清空画布并绘制参考线
+            clearAndDrawBaseLines();
+
+            while (currentIndex < total) {
+                await processBatch();
+            }
+        };
+
+        main();
+    </script>
+</body>
+
+</html>

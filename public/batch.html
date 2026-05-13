@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>批量转账</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            max-width: 900px;
+            margin: 24px auto;
+            padding: 12px;
+        }
+
+        textarea {
+            width: 100%;
+            font-family: monospace;
+        }
+
+        input,
+        button,
+        textarea,
+        select {
+            font-size: 14px;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px
+        }
+
+        .muted {
+            color: #666;
+            font-size: 13px
+        }
+
+        .preview {
+            background: #f7f7f7;
+            padding: 8px;
+            border-radius: 6px
+        }
+    </style>
+</head>
+
+<body>
+    <h1>批量转账</h1>
+    <p class="muted">输入格式：每行 <code>地址,数量</code>（逗号分隔）。数量对 ETH 使用 ether 单位，对 ERC-20 使用 token decimals。</p>
+
+    <div class="row">
+        <button id="connect">连接钱包</button>
+        <span id="account" class="muted"></span>
+    </div>
+
+    <div class="row">
+        <label><input type="radio" name="asset" value="eth" checked> ETH</label>
+        <label><input type="radio" name="asset" value="token" checked> ERC-20</label>
+        <input id="tokenAddress" placeholder="Token 合约地址（ERC-20 模式时填写）" value="0xfD16Da97bDe5C24f6a88209Ba3028878e35FC70A" style="flex:1" />
+        <input id="decimals" placeholder="decimals (默认 18)" style="width:120px" />
+    </div>
+
+    <div class="row">
+        <input id="contractAddress" placeholder="BatchTransfer 合约地址" value="0x687F8065365c38C920Da6856D5d4B3D356d5c408" style="width:100%" />
+    </div>
+
+    <div>
+        <textarea id="input" rows="10" placeholder="每行: address,amount"></textarea>
+    </div>
+
+    <div class="row">
+        <button id="previewBtn">预览</button>
+        <button id="approveBtn">Approve（仅 ERC-20）</button>
+        <button id="sendBtn">发送批量</button>
+    </div>
+
+    <div>
+        <strong>状态：</strong><span id="status" class="muted"></span>
+    </div>
+
+    <h3>预览</h3>
+    <div id="preview" class="preview"></div>
+
+    <p class="muted">说明：ERC-20 模式下，请先 approve 合约地址足够额度再发送批量交易（或使用页面的 Approve 按钮）。</p>
+
+    <!-- ethers v5 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script>
+        (function () {
+            const ethers = window.ethers;
+            let provider, signer, account;
+
+            const connectBtn = document.getElementById('connect');
+            const accountSpan = document.getElementById('account');
+            const inputEl = document.getElementById('input');
+            const previewEl = document.getElementById('preview');
+            const statusEl = document.getElementById('status');
+            const previewBtn = document.getElementById('previewBtn');
+            const sendBtn = document.getElementById('sendBtn');
+            const approveBtn = document.getElementById('approveBtn');
+
+            function setStatus(s) { statusEl.textContent = s; }
+
+            async function connect() {
+                if (!window.ethereum) return alert('请安装 MetaMask 或其它以太坊钱包');
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send('eth_requestAccounts', []);
+                signer = provider.getSigner();
+                account = await signer.getAddress();
+                accountSpan.textContent = account;
+                setStatus('已连接');
+            }
+
+            function isEthMode() {
+                return document.querySelector('input[name="asset"]:checked').value === 'eth';
+            }
+
+            function parseInput(text) {
+                const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+                const recipients = [];
+                const amounts = [];
+                for (let i = 0; i < lines.length; i++) {
+                    const parts = lines[i].split(',');
+                    if (parts.length < 2) throw new Error('第 ' + (i + 1) + ' 行格式错误，应为: address,amount');
+                    const addr = parts[0].trim();
+                    const amtStr = parts[1].trim();
+                    if (!ethers.utils.isAddress(addr)) throw new Error('第 ' + (i + 1) + ' 行地址无效: ' + addr);
+                    let bn;
+                    if (isEthMode()) {
+                        bn = ethers.utils.parseEther(amtStr);
+                    } else {
+                        const dec = document.getElementById('decimals').value || '18';
+                        bn = ethers.utils.parseUnits(amtStr, Number(dec));
+                    }
+                    recipients.push(addr);
+                    amounts.push(bn);
+                }
+                return { recipients, amounts };
+            }
+
+            previewBtn.addEventListener('click', () => {
+                try {
+                    const { recipients, amounts } = parseInput(inputEl.value);
+                    previewEl.innerHTML = '';
+                    recipients.forEach((r, i) => {
+                        const div = document.createElement('div');
+                        div.textContent = r + ' — ' + amounts[i].toString();
+                        previewEl.appendChild(div);
+                    });
+                    setStatus('预览成功，共 ' + recipients.length + ' 项');
+                } catch (e) { setStatus('解析错误: ' + e.message); }
+            });
+
+            approveBtn.addEventListener('click', async () => {
+                if (!signer) return alert('请先连接钱包');
+                if (isEthMode()) return alert('ETH 模式不需要 approve');
+                try {
+                    const tokenAddr = document.getElementById('tokenAddress').value.trim();
+                    const contractAddr = document.getElementById('contractAddress').value.trim();
+                    if (!ethers.utils.isAddress(tokenAddr)) return alert('请输入合法 Token 合约地址');
+                    if (!ethers.utils.isAddress(contractAddr)) return alert('请输入合法批量合约地址');
+                    const { amounts } = parseInput(inputEl.value);
+                    const total = amounts.reduce((a, b) => a.add(b), ethers.BigNumber.from(0));
+                    const tokenAbi = ['function approve(address spender, uint256 amount) public returns (bool)'];
+                    const token = new ethers.Contract(tokenAddr, tokenAbi, signer);
+                    const tx = await token.approve(contractAddr, total);
+                    setStatus('发送 approve 交易...');
+                    await tx.wait();
+                    setStatus('approve 成功');
+                } catch (e) { setStatus('approve 失败: ' + e.message); }
+            });
+
+            sendBtn.addEventListener('click', async () => {
+                if (!signer) return alert('请先连接钱包');
+                const contractAddr = document.getElementById('contractAddress').value.trim();
+                if (!ethers.utils.isAddress(contractAddr)) return alert('请输入合法批量合约地址');
+                try {
+                    const { recipients, amounts } = parseInput(inputEl.value);
+                    const abi = [
+                        'function batchSendEther(address[] calldata recipients, uint256[] calldata amounts) external payable',
+                        'function batchSendToken(address token, address[] calldata recipients, uint256[] calldata amounts) external'
+                    ];
+                    const contract = new ethers.Contract(contractAddr, abi, signer);
+                    if (isEthMode()) {
+                        const total = amounts.reduce((a, b) => a.add(b), ethers.BigNumber.from(0));
+                        const tx = await contract.batchSendEther(recipients, amounts, { value: total });
+                        setStatus('发送 ETH 批量交易...');
+                        await tx.wait();
+                        setStatus('ETH 批量转账成功');
+                    } else {
+                        const tokenAddr = document.getElementById('tokenAddress').value.trim();
+                        if (!ethers.utils.isAddress(tokenAddr)) return alert('请输入合法 Token 合约地址');
+                        const tx = await contract.batchSendToken(tokenAddr, recipients, amounts);
+                        setStatus('发送 Token 批量交易...');
+                        await tx.wait();
+                        setStatus('Token 批量转账成功');
+                    }
+                } catch (e) { setStatus('发送失败: ' + (e && e.message ? e.message : e)); }
+            });
+
+            connectBtn.addEventListener('click', connect);
+
+        })();
+    </script>
+</body>
+
+</html>

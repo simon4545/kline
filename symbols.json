@@ -1,5 +1,13 @@
 [
     "OPGUSDT",
+    "QTUMUSDT",
+    "BROCCOLIF3BUSDT",
+    "CARVUSDT",
+    "SQDUSDT",
+    "AVAAIUSDT",
+    "AKEUSDT",
+    "IRYSUSDT",
+    "USUSDT",
     "ACUUSDT",
     "GENIUSUSDT",
     "AIGENSYNUSDT",
@@ -17,9 +25,7 @@
     "AIAUSDT",
     "COLLECTUSDT",
     "GUAUSDT",
-    "RAVEUSDT",
     "CYSUSDT",
-    "POWERUSDT",
     "PIEVERSEUSDT",
     "BEATUSDT",
     "CLANKERUSDT",
@@ -101,6 +107,5 @@
     "MOODENGUSDT",
     "GOATUSDT",
     "POPCATUSDT",
-    "MEWUSDT",
-    "ZETAUSDT"
+    "MEWUSDT"
 ]

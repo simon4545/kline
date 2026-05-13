@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>币安永续合约双顶形态扫描器</title>
+    <link rel="stylesheet" href="./static/style.css">
+    <script src="./static/binance.js"></script>
+</head>
+
+<body>
+    <h1>币安永续合约双顶形态扫描器</h1>
+
+    <div id="controls">
+        <div class="param-group">
+            <label>
+                两顶高度偏差: <input type="range" id="peakHeightTolerance" min="0.5" max="5" step="0.1" value="1.5">
+                <span class="value-display" id="heightVal">1.5%</span>
+            </label>
+        </div>
+
+        <div class="param-group">
+            <label>
+                两顶时间偏差: <input type="range" id="peakTimeTolerance" min="5" max="60" step="1" value="40">
+                <span class="value-display" id="timeVal">40%</span>
+            </label>
+        </div>
+
+        <div class="param-group">
+            <label>
+                相似度阈值: <input type="range" id="similarityThreshold" min="50" max="95" step="1" value="75">
+                <span class="value-display" id="simVal">75%</span>
+            </label>
+        </div>
+        
+        <div class="param-group">
+            <label>
+                时间周期:
+                <select name="requireInterval" id="requireInterval">
+                    <option value="">--请选择时间--</option>
+                    <option value="1h">1小时</option>
+                    <option value="4h">4小时</option>
+                    <option value="1d">日线</option>
+                </select>
+            </label>
+        </div>
+        <div class="param-group">
+            <label>
+                <input type="checkbox" id="requireBreakout" checked>
+                必须跌破颈线才确认形态
+            </label>
+        </div>
+        <button id="scanBtn">开始扫描双顶形态</button>
+    </div>
+
+    <div id="progress">
+        <div id="progress-bar"></div>
+    </div>
+    <div id="status">准备就绪</div>
+
+    <h2>双顶形态匹配结果 (<span id="matchCount">0</span>)</h2>
+    <div id="results"></div>
+
+    <script>
+        let timeInterval = "1h";
+        document.addEventListener('DOMContentLoaded', function () {
+            const scanBtn = document.getElementById('scanBtn');
+            const progressBar = document.getElementById('progress-bar');
+            const statusElem = document.getElementById('status');
+            const resultsElem = document.getElementById('results');
+            const matchCountElem = document.getElementById('matchCount');
+            const intervalElem = document.getElementById("requireInterval");
+
+            intervalElem.addEventListener("change", (event) => { 
+                timeInterval = event.target.value; 
+            });
+            document.getElementById('peakHeightTolerance').addEventListener('input', function (e) { document.getElementById('heightVal').textContent = e.target.value + '%'; });
+            document.getElementById('peakTimeTolerance').addEventListener('input', function (e) { document.getElementById('timeVal').textContent = e.target.value + '%'; });
+            document.getElementById('similarityThreshold').addEventListener('input', function (e) { document.getElementById('simVal').textContent = e.target.value + '%'; });
+
+            scanBtn.addEventListener('click', async function () {
+                scanBtn.disabled = true;
+                resultsElem.innerHTML = '';
+                matchCountElem.textContent = '0';
+                statusElem.textContent = '正在获取合约列表...';
+                progressBar.style.width = '0%';
+
+                try {
+                    const contracts = await fetchBinanceContracts();
+                    statusElem.textContent = `找到 ${contracts.length} 个合约代币`;
+
+                    const heightTolerance = parseFloat(document.getElementById('peakHeightTolerance').value) / 100;
+                    const timeTolerance = parseFloat(document.getElementById('peakTimeTolerance').value) / 100;
+                    const similarityThreshold = parseFloat(document.getElementById('similarityThreshold').value) / 100;
+                    const requireBreakout = document.getElementById('requireBreakout').checked;
+
+                    const allResults = [];
+                    let processed = 0;
+
+                    for (const symbol of contracts) {
+                        const progress = (processed / contracts.length) * 100;
+                        progressBar.style.width = `${progress}%`;
+                        statusElem.textContent = `处理中: ${symbol} (${processed + 1}/${contracts.length})`;
+
+                        const klines = await fetchBinanceKlines(symbol, timeInterval, 200);
+                        if (!klines || klines.length < 100) {
+                            processed++;
+                            continue;
+                        }
+
+                        const prices = klines.map(k => parseFloat(k[4]));
+
+                        const results = detectDoubleTops(prices, { heightTolerance, timeTolerance, similarityThreshold, symbol });
+
+                        if (results.length > 0) {
+                            allResults.push(...results);
+                            renderResults(results, requireBreakout);
+                        }
+
+                        processed++;
+                    }
+
+                    matchCountElem.textContent = allResults.filter(r => requireBreakout ? r.necklineBroken : true).length;
+
+                    if (allResults.length === 0) {
+                        resultsElem.innerHTML = '<div class="no-results">未找到符合条件的双顶形态</div>';
+                    }
+
+                    statusElem.textContent = `扫描完成! 找到 ${allResults.length} 个双顶形态`;
+
+                } catch (error) {
+                    console.error('扫描失败:', error);
+                    statusElem.textContent = `错误: ${error.message}`;
+                } finally {
+                    scanBtn.disabled = false;
+                }
+            });
+
+            function renderResults(results) {
+                if (results.length < 1) { return }
+                let result = results[results.length - 1];
+                const resultElem = document.createElement('div');
+                resultElem.className = 'result';
+                resultElem.innerHTML = `
+                        <div class="result-header">
+                            <div class="symbol">${result.symbol}</div>
+                            <div class="similarity">匹配度: ${result.similarity.toFixed(1)}%</div>
+                        </div>
+                        <div class="match-bar">
+                            <div class="match-fill" style="width:${result.similarity}%"></div>
+                        </div>
+                        <div class="details">
+                            <div class="detail-item">
+                                <div class="detail-label">左顶价</div>
+                                <div class="detail-value">$${result.patternData.leftPeakPrice.toFixed(4)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">右顶价</div>
+                                <div class="detail-value">$${result.patternData.rightPeakPrice.toFixed(4)}/${result.patternData.patternEndTime}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">颈线价</div>
+                                <div class="detail-value">$${result.patternData.troughPrice.toFixed(4)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">回撤深度</div>
+                                <div class="detail-value">${Math.max(result.patternData.dropLeft, result.patternData.dropRight).toFixed(1)}%</div>
+                            </div>
+                        </div>
+                        <div class="breakout-status ${result.necklineBroken ? 'broken' : 'not-broken'}">
+                            颈线突破: ${result.necklineBroken ?
+                        `已跌破 (突破幅度: ${result.breakoutPercent.toFixed(2)}%)` :
+                        '未跌破'}
+                        </div>
+                        <div class="chart-container">
+                            <canvas class="kcanvas" id="chart-${result.symbol}"></canvas>
+                        </div>
+                    `;
+
+                resultsElem.appendChild(resultElem);
+
+                // 渲染图表
+                setTimeout(() => { renderChart(result, document.getElementById(`chart-${result.symbol}`)); }, 100);
+
+                // 更新匹配计数
+                matchCountElem.textContent = parseInt(matchCountElem.textContent) + 1;
+            }
+
+            // 渲染K线图
+            function renderChart(result, canvas) {
+                const ctx = canvas.getContext('2d');
+                const width = canvas.width;
+                const height = canvas.height;
+                const padding = 40;
+                const chartWidth = width - padding * 2;
+                const chartHeight = height - padding * 2;
+
+                ctx.clearRect(0, 0, width, height);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+
+                // 获取模式区间价格
+                const patternStart = result.patternData.startIndex;
+                const patternEnd = result.patternData.endIndex;
+                const patternPrices = result.prices.slice(patternStart, patternEnd + 1);
+
+                // 计算价格比例
+                const maxPrice = Math.max(...patternPrices);
+                const minPrice = Math.min(...patternPrices);
+                const priceRange = maxPrice - minPrice;
+
+                ctx.strokeStyle = '#ecf0f1';
+                ctx.lineWidth = 1;
+
+                // 水平网格线
+                for (let i = 0; i <= 4; i++) {
+                    const y = padding + (4 - i) * (chartHeight / 4);
+                    ctx.beginPath();
+                    ctx.moveTo(padding, y);
+                    ctx.lineTo(width - padding, y);
+                    ctx.stroke();
+
+                    // 价格标签
+                    const price = minPrice + (i / 4) * priceRange;
+                    ctx.fillStyle = '#7f8c8d';
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'right';
+                    ctx.fillText(price.toFixed(0), padding - 5, y + 4);
+                }
+
+                const pointCount = patternPrices.length;
+                for (let i = 0; i < pointCount; i += Math.floor(pointCount / 5)) {
+                    const x = padding + (i / (pointCount - 1)) * chartWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(x, padding);
+                    ctx.lineTo(x, height - padding);
+                    ctx.stroke();
+                }
+
+                ctx.beginPath(); ctx.strokeStyle = '#3498db'; ctx.lineWidth = 2;
+
+                patternPrices.forEach((price, i) => {
+                    const x = padding + (i / (pointCount - 1)) * chartWidth;
+                    const y = padding + chartHeight - ((price - minPrice) / priceRange * chartHeight);
+
+                    if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
+                });
+                ctx.stroke();
+
+                // 标记左顶
+                const leftIdx = result.patternData.leftPeakIndex - patternStart;
+                const leftX = padding + (leftIdx / (pointCount - 1)) * chartWidth;
+                const leftY = padding + chartHeight - ((result.patternData.leftPeakPrice - minPrice) / priceRange * chartHeight);
+                drawPeakMarker(ctx, leftX, leftY, '左顶', '#e74c3c');
+
+                // 标记右顶
+                const rightIdx = result.patternData.rightPeakIndex - patternStart;
+                const rightX = padding + (rightIdx / (pointCount - 1)) * chartWidth;
+                const rightY = padding + chartHeight - ((result.patternData.rightPeakPrice - minPrice) / priceRange * chartHeight);
+                drawPeakMarker(ctx, rightX, rightY, '右顶', '#e74c3c');
+
+                // 标记颈线
+                const troughIdx = result.patternData.troughIndex - patternStart;
+                const troughX = padding + (troughIdx / (pointCount - 1)) * chartWidth;
+                const troughY = padding + chartHeight - ((result.patternData.troughPrice - minPrice) / priceRange * chartHeight);
+
+                // 绘制颈线
+                ctx.beginPath();
+                ctx.moveTo(padding, troughY);
+                ctx.lineTo(width - padding, troughY);
+                ctx.strokeStyle = '#2ecc71';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 3]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // 标记颈线
+                ctx.fillStyle = '#2ecc71'; ctx.font = '12px Arial'; ctx.textAlign = 'left'; ctx.fillText('颈线', width - padding - 40, troughY - 5);
+
+                // 标记颈线点
+                ctx.beginPath(); ctx.arc(troughX, troughY, 4, 0, Math.PI * 2); ctx.fillStyle = '#2ecc71'; ctx.fill();
+
+                // 标记颈线突破点
+                if (result.necklineBroken) {
+                    const breakoutIdx = result.breakoutIndex - patternStart;
+                    if (breakoutIdx >= 0 && breakoutIdx < pointCount) {
+                        const breakoutX = padding + (breakoutIdx / (pointCount - 1)) * chartWidth;
+                        const breakoutY = padding + chartHeight - ((result.prices[result.breakoutIndex] - minPrice) / priceRange * chartHeight);
+
+                        drawBreakoutMarker(ctx, breakoutX, breakoutY);
+                    }
+                }
+
+                ctx.strokeStyle = '#bdc3c7'; ctx.lineWidth = 1; ctx.strokeRect(padding, padding, chartWidth, chartHeight);
+            }
+
+            function drawPeakMarker(ctx, x, y, label, color) {
+                ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+                ctx.fillStyle = color; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.fillText(label, x, y - 10);
+            }
+
+            function drawBreakoutMarker(ctx, x, y) {
+                ctx.beginPath(); ctx.moveTo(x - 8, y - 8); ctx.lineTo(x + 8, y + 8); ctx.moveTo(x - 8, y + 8); ctx.lineTo(x + 8, y - 8); ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 2; ctx.stroke();
+                ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'left'; ctx.fillText('颈线突破', x + 12, y - 5);
+            }
+        });
+    </script>
+</body>
+
+</html>

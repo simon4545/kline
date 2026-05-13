@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+
+<body>
+
+    <script>
+        const apiKey = "";
+        const apiSecret = "";
+        async function executeBuyOrder(price) {
+
+            const symbol = 'ETHUSDT';
+            const quantity = '0.01'; // Example quantity, adjust as needed
+            const timestamp = Date.now();
+
+            const params = `symbol=${symbol}&side=BUY&positionSide=LONG&type=MARKET&quantity=${quantity}&timestamp=${timestamp}&recvWindow=5000`;
+            const signature = CryptoJS.HmacSHA256(params, apiSecret).toString(CryptoJS.enc.Hex);
+
+            const request = {
+                id: crypto.randomUUID(),
+                method: 'order.place',
+                params: {
+                    symbol,
+                    side: 'BUY',
+                    positionSide: "LONG",
+                    type: 'MARKET',
+                    quantity,
+                    timestamp,
+                    recvWindow: 5000,
+                    signature
+                }
+            };
+
+            try {
+                // Using REST API for order placement as WebSocket order placement requires separate connection
+                const response = await fetch('https://fapi.binance.com/fapi/v1/order', {
+                    method: 'POST',
+                    headers: {
+                        'X-MBX-APIKEY': apiKey,
+                        'Content-Type': "application/x-www-form-urlencoded;"//,'application/json'
+                    },
+                    body: new URLSearchParams(request.params)
+                });
+
+                const result = await response.json();
+                log(`Buy order placed successfully at price ${price} for ${quantity} ETH`, result);
+
+            } catch (error) {
+                log(`Order placement error: ${error}`);
+            }
+        }
+        // executeBuyOrder(3317)
+    </script>
+</body>
+
+</html>

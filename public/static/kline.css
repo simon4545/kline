@@ -135,25 +135,6 @@ body {
     background-color: #1a1a1a;
 }
 
-.favorite-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 24px;
-    padding: 0;
-    transition: transform 0.2s, color 0.2s;
-    color: #555;
-}
-
-.favorite-btn:hover {
-    transform: scale(1.2);
-    color: #e74c3c;
-}
-
-.favorite-btn.active {
-    color: #e74c3c;
-}
-
 .filter-section {
     display: flex;
     align-items: center;
@@ -173,29 +154,6 @@ body {
 
 .filter-select:hover {
     border-color: #4a8a5a;
-}
-
-.favorites-count {
-    font-size: 13px;
-    color: #888;
-    background: #333;
-    padding: 5px 12px;
-    border-radius: 20px;
-}
-
-.clear-favorites {
-    padding: 8px 15px;
-    background-color: #8b3a3a;
-    color: white;
-    border: none;
-    border-radius: 20px;
-    cursor: pointer;
-    font-size: 12px;
-    transition: background-color 0.3s;
-}
-
-.clear-favorites:hover {
-    background-color: #a04545;
 }
 
 .toggle-label {

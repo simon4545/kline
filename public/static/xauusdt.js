@@ -260,6 +260,9 @@ function connectWebSocket(intervalConfig) {
             close: parseFloat(kline.c),
         };
 
+        // 更新页面标题显示实时价格
+        document.title = `$${kline.c} 多周期K线图表`;
+
         const data = chartData[intervalConfig.key];
         if (!data) return;
 

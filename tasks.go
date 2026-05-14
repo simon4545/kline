@@ -24,8 +24,9 @@ func updateKlines(db *gorm.DB, symbol string) error {
 		// 没有历史数据：从一年前开始拉取
 		startTime = time.Now().AddDate(-1, 0, 0).UnixMilli()
 	} else {
-		// 已有数据：从最后一条的下一个周期开始（避免重复拉取）
-		startTime = last.OpenTime
+		// 已有数据：从最后一条所在周期的上一个周期开始
+		// 这样可以重新拉取到该周期的完整K线数据，修正之前保存时未收盘的临时价格
+		startTime = last.OpenTime - periodMs
 	}
 
 	nowMs := time.Now().UnixMilli()
@@ -51,8 +52,8 @@ func updateKlines(db *gorm.DB, symbol string) error {
 			var existing Kline
 			err := db.Table(tableName).Where("open_time = ?", k.OpenTime).First(&existing).Error
 			if err == nil {
-				// 已存在且未收盘 → 更新（通常只发生在最新一根未完整K线上）
-				if existing.CloseTime > time.Now().UnixMilli() {
+				// 已存在 → 如果价格变化了则更新（处理跨周期边界时上一根K线收盘价由临时变为确定的情况）
+				if k.Close != existing.Close {
 					db.Table(tableName).Model(&existing).Updates(k)
 				}
 			} else if errors.Is(err, gorm.ErrRecordNotFound) {

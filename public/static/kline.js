@@ -9,84 +9,20 @@ let emaVisible = true;
 let maVisible = true;
 let bbVisible = true;
 
-// 收藏相关
-const FAVORITES_KEY = 'kline_favorites';
-let favorites = [];
-
-// 当前筛选模式：'all' 或 'favorites'
+// 筛选模式：'all' 或 'notes'
 let filterMode = 'all';
-
-// 获取收藏列表
-function getFavorites() {
-    try {
-        const stored = localStorage.getItem(FAVORITES_KEY);
-        favorites = stored ? JSON.parse(stored) : [];
-    } catch (e) {
-        favorites = [];
-    }
-    return favorites;
-}
-
-// 保存收藏列表
-function saveFavorites() {
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
-}
-
-// 切换收藏状态
-function toggleFavorite(symbol) {
-    const index = favorites.indexOf(symbol);
-    if (index > -1) {
-        favorites.splice(index, 1);
-    } else {
-        favorites.push(symbol);
-    }
-    saveFavorites();
-    updateFavoriteButtons();
-    updateFavoritesCount();
-}
-
-// 更新所有收藏按钮状态
-function updateFavoriteButtons() {
-    document.querySelectorAll('.favorite-btn').forEach(btn => {
-        const symbol = btn.getAttribute('data-symbol');
-        if (favorites.includes(symbol)) {
-            btn.classList.add('active');
-            btn.textContent = '★';
-        } else {
-            btn.classList.remove('active');
-            btn.textContent = '☆';
-        }
-    });
-}
-
-// 更新收藏计数
-function updateFavoritesCount() {
-    const countEl = document.getElementById('favorites-count');
-    if (countEl) {
-        countEl.textContent = `已收藏 ${favorites.length} 个`;
-    }
-}
 
 // 获取过滤后的合约列表
 function getFilteredContracts(contracts) {
-    if (filterMode === 'favorites') {
-        return contracts.filter(c => favorites.includes(c));
+    if (filterMode === 'notes') {
+        const notes = getNotes();
+        return contracts.filter(c => notes[c] && notes[c].trim());
     }
     return contracts;
 }
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // 初始化收藏
-    getFavorites();
-    
-    // 如果有收藏，自动勾选"只看收藏"开关
-    const filterFavorites = document.getElementById('filter-favorites');
-    if (favorites.length > 0) {
-        filterFavorites.checked = true;
-        filterMode = 'favorites';
-    }
-    updateFavoritesCount();
     // 获取所有时间级别按钮
     const timeframeButtons = document.querySelectorAll('.timeframe-btn');
     
@@ -142,9 +78,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // 收藏筛选开关
-    filterFavorites.addEventListener('change', function() {
-        filterMode = this.checked ? 'favorites' : 'all';
+    // 备注筛选开关
+    const filterNotes = document.getElementById('filter-notes');
+    filterNotes.addEventListener('change', function() {
+        filterMode = this.checked ? 'notes' : 'all';
         if (currentInterval) {
             loadCharts(currentInterval, true);
         }
@@ -248,13 +185,13 @@ async function loadCharts(interval, force = false) {
         // 根据筛选模式过滤
         const contracts = getFilteredContracts(allContracts);
         
-        const filterText = filterMode === 'favorites' ? '(已收藏)' : '(全部)';
+        const filterText = filterMode === 'notes' ? '(有备注)' : '(全部)';
         statusElement.textContent = `找到 ${contracts.length} 个合约代币 ${filterText}，正在加载数据...`;
         
         // 如果没有合约，显示提示信息
         if (!contracts || contracts.length === 0) {
-            if (filterMode === 'favorites') {
-                chartsContainer.innerHTML = '<div style="text-align: center; width: 100%; padding: 20px;">暂无收藏的代币<br><br>点击代币名称旁的☆即可收藏</div>';
+            if (filterMode === 'notes') {
+                chartsContainer.innerHTML = '<div style="text-align: center; width: 100%; padding: 20px;">暂无有备注的代币<br><br>点击代币名称旁的✏️即可添加备注</div>';
             } else {
                 chartsContainer.innerHTML = '<div style="text-align: center; width: 100%; padding: 20px;">未找到合约数据</div>';
             }
@@ -277,13 +214,11 @@ async function loadCharts(interval, force = false) {
                     // 创建图表容器
                     const chartWrapper = document.createElement('div');
                     chartWrapper.className = 'chart-wrapper';
-                    const isFavorite = favorites.includes(symbol);
                     chartWrapper.innerHTML = `
                         <div class="chart-header">
                             ${symbol}
-                            <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-symbol="${symbol}" onclick="toggleFavorite('${symbol}')">${isFavorite ? '★' : '☆'}</button>
                             <span class="note-icon-wrapper" data-symbol="${symbol}">
-                                <span class="note-btn" onclick="showNotePopup('${symbol}', event)" title="备注">📝</span>
+                                <span class="note-btn" onclick="showNotePopup('${symbol}', event)" title="备注">✏️</span>
                                 <span class="note-tooltip" id="tooltip-${symbol}"></span>
                             </span>
                         </div>

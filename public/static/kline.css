@@ -3,14 +3,14 @@
     flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 20px;
-    justify-content: center;
+    justify-content: flex-start;
 }
 
 .timeframe-btn {
     padding: 10px 20px;
-    background-color: #3498db;
-    color: white;
-    border: none;
+    background-color: #4a4a4a;
+    color: #e0e0e0;
+    border: 1px solid #666;
     border-radius: 6px;
     cursor: pointer;
     font-size: 14px;
@@ -18,13 +18,14 @@
 }
 
 .timeframe-btn:hover {
-    background-color: #2980b9;
+    background-color: #5a5a5a;
     transform: translateY(-2px);
 }
 
 .timeframe-btn.active {
-    background-color: #2ecc71;
-    box-shadow: 0 2px 8px rgba(46, 204, 113, 0.4);
+    background-color: #2d5a3d;
+    border-color: #4a8a5a;
+    box-shadow: 0 2px 8px rgba(46, 204, 113, 0.2);
 }
 
 #charts-container {
@@ -41,14 +42,14 @@
     margin-bottom: 20px;
     padding: 0 10px;
     box-sizing: border-box;
-    background: #fff;
+    background: #2a2a2a;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     transition: box-shadow 0.3s;
 }
 
 .chart-wrapper:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
 
 @media (min-width: 576px) {
@@ -85,13 +86,13 @@
     justify-content: center;
     gap: 12px;
     padding: 15px 0 5px 0;
-    color: #2c3e50;
+    color: #c0c0c0;
 }
 
 .chart-container {
     width: 100%;
     height: 400px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid #444;
     border-radius: 6px;
     overflow: hidden;
 }
@@ -101,7 +102,7 @@
     padding: 15px;
     margin: 10px 0;
     font-style: italic;
-    color: #7f8c8d;
+    color: #888;
     font-size: 14px;
 }
 
@@ -110,16 +111,28 @@
     top: 0;
     left: 0;
     right: 0;
-    background-color: #f8f9fa;
+    background-color: #1e1e1e;
     z-index: 1000;
-    padding: 15px 0;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    border-bottom: 1px solid #e0e0e0;
+    padding: 15px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left {
+    flex: 1;
+}
+
+.header-right {
+    flex-shrink: 0;
+    margin-left: 20px;
 }
 
 body {
     padding-top: 110px;
-    background-color: #f5f6fa;
+    background-color: #1a1a1a;
 }
 
 .favorite-btn {
@@ -129,7 +142,7 @@ body {
     font-size: 24px;
     padding: 0;
     transition: transform 0.2s, color 0.2s;
-    color: #bdc3c7;
+    color: #555;
 }
 
 .favorite-btn:hover {
@@ -150,29 +163,29 @@ body {
 
 .filter-select {
     padding: 10px 15px;
-    border: 1px solid #dcdfe6;
+    border: 1px solid #444;
     border-radius: 6px;
-    background-color: white;
+    background-color: #2a2a2a;
     cursor: pointer;
     font-size: 14px;
-    color: #333;
+    color: #e0e0e0;
 }
 
 .filter-select:hover {
-    border-color: #3498db;
+    border-color: #4a8a5a;
 }
 
 .favorites-count {
     font-size: 13px;
-    color: #7f8c8d;
-    background: #ecf0f1;
+    color: #888;
+    background: #333;
     padding: 5px 12px;
     border-radius: 20px;
 }
 
 .clear-favorites {
     padding: 8px 15px;
-    background-color: #e74c3c;
+    background-color: #8b3a3a;
     color: white;
     border: none;
     border-radius: 20px;
@@ -182,7 +195,7 @@ body {
 }
 
 .clear-favorites:hover {
-    background-color: #c0392b;
+    background-color: #a04545;
 }
 
 .toggle-label {
@@ -191,7 +204,7 @@ body {
     gap: 6px;
     cursor: pointer;
     font-size: 14px;
-    color: #555;
+    color: #aaa;
 }
 
 .toggle-label input {
@@ -202,7 +215,7 @@ body {
     position: relative;
     width: 36px;
     height: 20px;
-    background-color: #ccc;
+    background-color: #444;
     border-radius: 20px;
     transition: background-color 0.3s;
 }
@@ -214,17 +227,18 @@ body {
     left: 2px;
     width: 16px;
     height: 16px;
-    background-color: white;
+    background-color: #888;
     border-radius: 50%;
     transition: transform 0.3s;
 }
 
 .toggle-label input:checked + .toggle-slider {
-    background-color: #2ecc71;
+    background-color: #2d5a3d;
 }
 
 .toggle-label input:checked + .toggle-slider::before {
     transform: translateX(16px);
+    background-color: #4a8a5a;
 }
 
 .indicator-toggles, .filter-toggles {
@@ -232,4 +246,280 @@ body {
     align-items: center;
     gap: 15px;
     margin-left: 15px;
+}
+
+/* 备注相关样式 */
+.note-icon-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.note-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 20px;
+    padding: 4px 8px;
+    transition: transform 0.2s, opacity 0.2s, color 0.2s;
+    opacity: 0.3;
+}
+
+.note-btn:hover {
+    transform: scale(1.2);
+    opacity: 1;
+}
+
+.note-btn.has-note {
+    opacity: 1;
+    color: #f0c040;
+}
+
+.note-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    white-space: pre-wrap;
+    width: 250px;
+    min-width: 100px;
+    max-width: 300px;
+    word-wrap: break-word;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    border: 1px solid #555;
+    margin-top: 5px;
+}
+
+.note-tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-bottom-color: #555;
+}
+
+.note-icon-wrapper:hover .note-tooltip {
+    display: block;
+}
+
+.note-icon-wrapper .note-tooltip:empty {
+    display: none;
+}
+
+.note-popup {
+    position: fixed;
+    background-color: #2a2a2a;
+    border: 1px solid #555;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    z-index: 2000;
+    min-width: 280px;
+    max-width: 400px;
+}
+
+.note-popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background-color: #333;
+    border-radius: 8px 8px 0 0;
+    color: #e0e0e0;
+    font-weight: bold;
+}
+
+.close-popup-btn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.close-popup-btn:hover {
+    color: #e74c3c;
+}
+
+.note-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 12px 15px;
+    box-sizing: border-box;
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 0;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+}
+
+.note-textarea:focus {
+    border-color: #4a8a5a;
+}
+
+.note-textarea::placeholder {
+    color: #666;
+}
+
+.note-popup-footer {
+    display: flex;
+    gap: 10px;
+    padding: 12px 15px;
+    background-color: #333;
+    border-radius: 0 0 8px 8px;
+}
+
+.save-note-btn, .cancel-note-btn, .delete-note-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.3s;
+}
+
+.save-note-btn {
+    background-color: #2d5a3d;
+    color: white;
+}
+
+.save-note-btn:hover {
+    background-color: #3d7a4d;
+}
+
+.cancel-note-btn {
+    background-color: #444;
+    color: #e0e0e0;
+}
+
+.cancel-note-btn:hover {
+    background-color: #555;
+}
+
+.delete-note-btn {
+    background-color: #8b3a3a;
+    color: white;
+    margin-left: auto;
+}
+
+.delete-note-btn:hover {
+    background-color: #a04545;
+}
+
+/* 顶部右侧按钮样式 */
+#show-all-notes {
+    padding: 8px 16px;
+    background-color: #333;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+#show-all-notes:hover {
+    background-color: #444;
+}
+
+/* 备注弹窗样式 */
+.notes-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0,0,0,0.7);
+    z-index: 3000;
+}
+
+.notes-modal-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #2a2a2a;
+    border: 1px solid #555;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow: hidden;
+}
+
+.notes-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background-color: #333;
+    color: #e0e0e0;
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.close-notes-btn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 28px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.close-notes-btn:hover {
+    color: #e74c3c;
+}
+
+.notes-modal-body {
+    padding: 15px 20px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.note-item {
+    padding: 12px;
+    background-color: #1e1e1e;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    border: 1px solid #333;
+}
+
+.note-item:last-child {
+    margin-bottom: 0;
+}
+
+.note-item-symbol {
+    font-weight: bold;
+    color: #4a8a5a;
+    margin-bottom: 6px;
+}
+
+.note-item-text {
+    color: #c0c0c0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 14px;
+}
+
+.no-notes {
+    text-align: center;
+    color: #666;
+    padding: 30px;
+    font-style: italic;
 }

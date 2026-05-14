@@ -25,7 +25,7 @@ func updateKlines(db *gorm.DB, symbol string) error {
 		startTime = time.Now().AddDate(-1, 0, 0).UnixMilli()
 	} else {
 		// 已有数据：从最后一条的下一个周期开始（避免重复拉取）
-		startTime = last.OpenTime + periodMs
+		startTime = last.OpenTime
 	}
 
 	nowMs := time.Now().UnixMilli()

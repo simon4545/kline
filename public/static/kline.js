@@ -161,6 +161,49 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+    
+    // 初始化备注图标
+    setTimeout(updateAllNoteIcons, 500);
+    
+    // 查看所有备注按钮
+    const showAllNotesBtn = document.getElementById('show-all-notes');
+    const notesModal = document.getElementById('notes-modal');
+    const notesList = document.getElementById('notes-list');
+    
+    showAllNotesBtn.addEventListener('click', function() {
+        const notes = getNotes();
+        const notesHtml = [];
+        
+        for (const symbol in notes) {
+            if (notes[symbol]) {
+                notesHtml.push(`
+                    <div class="note-item">
+                        <div class="note-item-symbol">${symbol}</div>
+                        <div class="note-item-text">${notes[symbol]}</div>
+                    </div>
+                `);
+            }
+        }
+        
+        if (notesHtml.length > 0) {
+            notesList.innerHTML = notesHtml.join('');
+        } else {
+            notesList.innerHTML = '<div class="no-notes">暂无备注</div>';
+        }
+        
+        notesModal.style.display = 'block';
+    });
+    
+    // 关闭备注弹窗
+    notesModal.querySelector('.close-notes-btn').addEventListener('click', function() {
+        notesModal.style.display = 'none';
+    });
+    
+    notesModal.addEventListener('click', function(e) {
+        if (e.target === notesModal) {
+            notesModal.style.display = 'none';
+        }
+    });
 });
 
 // 限制同时加载的图表数量
@@ -239,6 +282,10 @@ async function loadCharts(interval, force = false) {
                         <div class="chart-header">
                             ${symbol}
                             <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-symbol="${symbol}" onclick="toggleFavorite('${symbol}')">${isFavorite ? '★' : '☆'}</button>
+                            <span class="note-icon-wrapper" data-symbol="${symbol}">
+                                <span class="note-btn" onclick="showNotePopup('${symbol}', event)" title="备注">📝</span>
+                                <span class="note-tooltip" id="tooltip-${symbol}"></span>
+                            </span>
                         </div>
                         <div class="chart-container" id="chart-${symbol}"></div>
                     `;
@@ -246,6 +293,9 @@ async function loadCharts(interval, force = false) {
                     
                     // 渲染图表
                     renderChart(symbol, klines, interval);
+                    
+                    // 更新备注图标
+                    updateNoteIcon(symbol);
                     
                     loadedCharts++;
                     statusElement.textContent = `正在加载图表 ${loadedCharts}/${totalCharts}...`;
@@ -478,4 +528,160 @@ function renderBollingerBands(chart, period, stdDev, closes, chartData) {
     lowerSeries.setData(lowerData);
 
     return { middle: middleSeries, upper: upperSeries, lower: lowerSeries };
+}
+
+// 备注相关
+const NOTES_KEY = 'kline_notes';
+
+// 获取所有备注
+function getNotes() {
+    try {
+        const stored = localStorage.getItem(NOTES_KEY);
+        return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+// 保存备注
+function saveNotes(notes) {
+    localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+}
+
+// 获取单个币种备注
+function getNote(symbol) {
+    const notes = getNotes();
+    return notes[symbol] || '';
+}
+
+// 设置单个币种备注
+function setNote(symbol, note) {
+    const notes = getNotes();
+    if (note.trim()) {
+        notes[symbol] = note;
+    } else {
+        delete notes[symbol];
+    }
+    saveNotes(notes);
+    updateNoteIcon(symbol);
+}
+
+// 更新备注图标显示
+function updateNoteIcon(symbol) {
+    const noteIconWrapper = document.querySelector(`.note-icon-wrapper[data-symbol="${symbol}"]`);
+    if (!noteIconWrapper) return;
+    
+    const noteBtn = noteIconWrapper.querySelector('.note-btn');
+    const tooltip = noteIconWrapper.querySelector('.note-tooltip');
+    const note = getNote(symbol);
+    
+    if (note) {
+        noteBtn.classList.add('has-note');
+        tooltip.textContent = note;
+    } else {
+        noteBtn.classList.remove('has-note');
+        tooltip.textContent = '';
+    }
+}
+
+// 更新所有备注图标
+function updateAllNoteIcons() {
+    document.querySelectorAll('.note-icon-wrapper').forEach(wrapper => {
+        const symbol = wrapper.getAttribute('data-symbol');
+        if (symbol) {
+            updateNoteIcon(symbol);
+        }
+    });
+}
+
+// 显示备注弹窗
+function showNotePopup(symbol, event) {
+    event.stopPropagation();
+    
+    // 关闭已有的弹窗
+    closeNotePopup();
+    
+    const note = getNote(symbol);
+    
+    // 创建弹窗
+    const popup = document.createElement('div');
+    popup.className = 'note-popup';
+    popup.id = 'note-popup';
+    popup.innerHTML = `
+        <div class="note-popup-header">
+            <span>备注 - ${symbol}</span>
+            <button class="close-popup-btn">&times;</button>
+        </div>
+        <textarea class="note-textarea" placeholder="输入备注，支持换行...">${note}</textarea>
+        <div class="note-popup-footer">
+            <button class="save-note-btn">保存</button>
+            <button class="cancel-note-btn">取消</button>
+            ${note ? '<button class="delete-note-btn">删除备注</button>' : ''}
+        </div>
+    `;
+    
+    document.body.appendChild(popup);
+    
+    // 定位弹窗
+    const rect = event.target.getBoundingClientRect();
+    let top = rect.bottom + 5;
+    let left = rect.left;
+    
+    // 弹窗尺寸
+    const popupWidth = 320;
+    const popupHeight = 250;
+    
+    // 检测右边界
+    if (left + popupWidth > window.innerWidth - 10) {
+        left = window.innerWidth - popupWidth - 10;
+    }
+    
+    // 检测左边界
+    if (left < 10) {
+        left = 10;
+    }
+    
+    // 检测下边界
+    if (top + popupHeight > window.innerHeight - 10) {
+        top = rect.top - popupHeight - 5;
+    }
+    
+    popup.style.top = `${top}px`;
+    popup.style.left = `${left}px`;
+    
+    // 绑定事件
+    popup.querySelector('.close-popup-btn').addEventListener('click', closeNotePopup);
+    popup.querySelector('.cancel-note-btn').addEventListener('click', closeNotePopup);
+    popup.querySelector('.save-note-btn').addEventListener('click', function() {
+        const text = popup.querySelector('.note-textarea').value;
+        setNote(symbol, text);
+        closeNotePopup();
+    });
+    
+    if (note) {
+        popup.querySelector('.delete-note-btn').addEventListener('click', function() {
+            setNote(symbol, '');
+            closeNotePopup();
+        });
+    }
+    
+    // 点击外部关闭
+    setTimeout(() => {
+        document.addEventListener('click', handleOutsideClick);
+    }, 100);
+}
+
+function closeNotePopup() {
+    const popup = document.getElementById('note-popup');
+    if (popup) {
+        popup.remove();
+    }
+    document.removeEventListener('click', handleOutsideClick);
+}
+
+function handleOutsideClick(e) {
+    const popup = document.getElementById('note-popup');
+    if (popup && !popup.contains(e.target) && !e.target.classList.contains('note-btn')) {
+        closeNotePopup();
+    }
 }

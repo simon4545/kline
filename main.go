@@ -17,7 +17,6 @@ import (
 	"github.com/pretty66/websocketproxy"
 )
 
-// 全局缓存实例
 var cache = NewLedisCache()
 var symbols []string
 var botToken, chatID string
@@ -25,18 +24,17 @@ var port *int
 
 func init() {
 	fmt.Println("启动程序")
-	// 读取 .env
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	// 定义命令行参数 -port，默认值 3000
 	port = flag.Int("port", 3000, "服务监听端口号")
-	flag.Parse()
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	flag.CommandLine.SetOutput(os.Stderr)
+	_ = flag.CommandLine.Parse(os.Args[1:])
 	botToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	chatID = os.Getenv("TELEGRAM_CHAT_ID")
 }
 
-// ================= 主程序 =================
 func main() {
 	fmt.Println("启动程序")
 	loc, err := time.LoadLocation("Asia/Shanghai")
@@ -44,16 +42,13 @@ func main() {
 		log.Fatal(err)
 	}
 	db, err := gorm.Open(sqlite.Open("klines.db"), &gorm.Config{
-		NowFunc: func() time.Time {
-			return time.Now().In(loc)
-		},
-		Logger: logger.Default.LogMode(logger.Silent),
+		NowFunc: func() time.Time { return time.Now().In(loc) },
+		Logger:  logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 显式设置WAL模式
 	if err := db.Exec("PRAGMA journal_mode=DELETE;").Error; err != nil {
 		log.Printf("设置WAL模式失败: %v", err)
 	} else {
@@ -66,13 +61,11 @@ func main() {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 
-	// 从 symbols.json 读取 symbols
 	symbols, err = loadSymbolsFromFile("symbols.json")
 	if err != nil {
 		return
 	}
 
-	// 遍历所有代币，确保表存在
 	for _, symbol := range symbols {
 		kline := Kline{Symbol: symbol}
 		if err := db.Table(kline.TableName()).AutoMigrate(&Kline{}); err != nil {
@@ -84,23 +77,18 @@ func main() {
 		}
 	}
 
-	// 启动 HTTP 服务
 	go startHttpServer(db)
-
-	// 启动定时任务
 	go startScheduledTasks(db)
+	go startXauMonitor()
 
 	clean(db)
 	select {}
 }
 
-// startHttpServer 启动 HTTP 服务器
 func startHttpServer(db *gorm.DB) {
-	wp, err := websocketproxy.NewProxy("wss://fstream.binance.com:443/stream", func(r *http.Request) error {
-		return nil
-	})
+	wp, err := websocketproxy.NewProxy("wss://fstream.binance.com:443/stream", func(r *http.Request) error { return nil })
 	if err != nil {
-		log.Fatal()
+		log.Fatal(err)
 	}
 
 	http.Handle("/", gzhttp.GzipHandler(http.FileServer(http.Dir("./public"))))
@@ -119,7 +107,6 @@ func startHttpServer(db *gorm.DB) {
 	}
 }
 
-// startScheduledTasks 启动定时任务
 func startScheduledTasks(db *gorm.DB) {
 	if err := processSymbols(symbols, db); err != nil {
 		log.Println("部分任务失败:", err)

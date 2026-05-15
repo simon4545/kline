@@ -121,67 +121,73 @@ func queryAggregatedKlines(db *gorm.DB, symbol string, interval string, limit in
 	slices.Reverse(resp)
 	return resp, nil
 }
-
 func getAggKline(db *gorm.DB, symbol string, interval string, limit int) (result []Kline) {
-	// 创建一个带有symbol的Kline实例，用于获取表名
 	kline := Kline{Symbol: symbol}
-
 	if limit == 0 {
 		limit = 200
 	}
-	if !slices.Contains([]string{ "4h", "1d","1w"}, interval) {
-		interval = "1d"
-	}
+	tableName := kline.TableName()
 
-	var query string
 	if interval == "4h" {
-		tableName := kline.TableName()
-		query = fmt.Sprintf(`SELECT symbol, open_time, open, high, low, close, volume, close_time FROM %s ORDER BY open_time desc limit %d;`, tableName, limit)
-	} else {
-		var bucketMs int64
-		switch interval {
-		case "1d":
-			bucketMs = 24 * 60 * 60 * 1000
-		case "1w":
-			bucketMs = 7 * 24 * 60 * 60 * 1000
-		default:
-			return
-		}
-		tableName := kline.TableName()
-		query = fmt.Sprintf(`
-		WITH base AS (
-		SELECT symbol, open_time, open, high, low, close, volume, close_time, CAST(open_time / %d AS INTEGER) * %d AS bucket_start
-		FROM %s
-		),
-		agg AS (
-		SELECT
-			symbol,
-			bucket_start,
-			FIRST_VALUE(open) OVER (PARTITION BY bucket_start ORDER BY open_time ASC) AS open,
-			MAX(high)   OVER (PARTITION BY bucket_start) AS high,
-			MIN(low)    OVER (PARTITION BY bucket_start) AS low,
-			FIRST_VALUE(close) OVER (PARTITION BY bucket_start ORDER BY open_time DESC) AS close,
-			SUM(volume) OVER (PARTITION BY bucket_start) AS volume,
-			MAX(close_time) OVER (PARTITION BY bucket_start) AS close_time,
-			ROW_NUMBER() OVER (PARTITION BY bucket_start ORDER BY open_time ASC) AS rn
-		FROM base
-		)
-		SELECT symbol, bucket_start AS open_time, open, high, low, close, volume, close_time FROM agg WHERE rn = 1 ORDER BY open_time desc limit %d;
-	`, bucketMs, bucketMs, tableName, limit)
-	}
-	rows, err := db.Raw(query).Rows()
-	if err != nil {
+		query := fmt.Sprintf(`SELECT symbol, open_time, open, high, low, close, volume, close_time FROM %s ORDER BY open_time DESC LIMIT %d;`, tableName, limit)
+		db.Raw(query).Scan(&result)
 		return
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var k Kline
-		if err := rows.Scan(&k.Symbol, &k.OpenTime, &k.Open, &k.High, &k.Low, &k.Close, &k.Volume, &k.CloseTime); err != nil {
-			return
-		}
-		result = append(result, k)
+	var bucketInterval int64
+	var offset int64
+
+	const msDay int64 = 24 * 60 * 60 * 1000
+	const msWeek int64 = 7 * msDay
+	const ms3Days int64 = 3 * msDay // Unix 0 (周四) 到 周一 的差值
+
+	if interval == "1d" {
+		bucketInterval = msDay
+		offset = 0 // UTC 0点对齐，不需要偏移
+	} else if interval == "1w" {
+		bucketInterval = msWeek
+		// 1970-01-01 是周四，为了让聚合结果的 bucket_start 落在周一 00:00:00 UTC
+		// 我们需要给当前时间戳加 3 天进行计算，计算完后再减去 3 天
+		offset = ms3Days
+	} else {
+		return
 	}
+
+	// SQL 说明：
+	// bucket_start: 确保时间戳对齐到 UTC 的自然天/周起点
+	// close_time: 设为该周期的最后一毫秒
+	query := fmt.Sprintf(`
+    WITH base AS (
+        SELECT 
+            symbol, open, high, low, close, volume, open_time,
+            CAST(((open_time + %d) / %d) AS INTEGER) * %d - %d AS bucket_start
+        FROM %s
+    ),
+    agg AS (
+        SELECT
+            symbol,
+            bucket_start,
+            FIRST_VALUE(open) OVER (PARTITION BY bucket_start ORDER BY open_time ASC) AS open,
+            MAX(high) OVER (PARTITION BY bucket_start) AS high,
+            MIN(low) OVER (PARTITION BY bucket_start) AS low,
+            FIRST_VALUE(close) OVER (PARTITION BY bucket_start ORDER BY open_time DESC) AS close,
+            SUM(volume) OVER (PARTITION BY bucket_start) AS volume,
+            (bucket_start + %d - 1) AS calculated_close_time,
+            ROW_NUMBER() OVER (PARTITION BY bucket_start ORDER BY open_time ASC) AS rn
+        FROM base
+    )
+    SELECT 
+        symbol, 
+        bucket_start AS open_time, 
+        open, high, low, close, volume, 
+        calculated_close_time AS close_time 
+    FROM agg 
+    WHERE rn = 1 
+    ORDER BY open_time DESC 
+    LIMIT %d;
+    `, offset, bucketInterval, bucketInterval, offset, tableName, bucketInterval, limit)
+
+	db.Raw(query).Scan(&result)
 	return
 }
 

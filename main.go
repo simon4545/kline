@@ -108,8 +108,8 @@ func startHttpServer(db *gorm.DB) {
 	http.HandleFunc("/klines/batch", gzhttp.GzipHandler(handleKlinesBatch(db)))
 	http.HandleFunc("/symbols", handleSymbols())
 	http.HandleFunc("/hot", handleHotSymbols())
-	http.HandleFunc("/marketcap", handleMarketCap())
-	http.HandleFunc("/fapi/marketcap", handleFutureMarketCap())
+	http.HandleFunc("/marketcap", handleProxyFetch("https://www.binance.com/bapi/apex/v1/friendly/apex/marketing/complianceSymbolList"))
+	http.HandleFunc("/fapi/marketcap", handleProxyFetch("https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list"))
 	http.HandleFunc("/stream", wp.Proxy)
 
 	addr := fmt.Sprintf(":%d", *port)

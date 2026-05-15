@@ -93,52 +93,50 @@ func processSymbols(symbols []string, db *gorm.DB) error {
 
 // clean 定时清理任务：删除旧数据和不需要的表
 func clean(db *gorm.DB) {
-	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
-		defer ticker.Stop()
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
 
-		for {
-			<-ticker.C
-			symbols, err := loadSymbolsFromFile("symbols.json")
-			if err != nil {
-				log.Printf("读取 symbols.json 失败: %v", err)
-				continue
-			}
-
-			symbolSet := make(map[string]struct{})
-			for _, s := range symbols {
-				symbolSet["kline_"+s] = struct{}{}
-			}
-			var tables []string
-			err = db.Raw("SELECT name FROM sqlite_master WHERE type='table'").Scan(&tables).Error
-			if err != nil {
-				log.Printf("获取数据库表名失败: %v", err)
-				continue
-			}
-
-			for _, table := range tables {
-				if _, ok := symbolSet[table]; !ok && table != "sqlite_sequence" {
-					log.Printf("删除表: %s", table)
-					if err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS `%s`", table)).Error; err != nil {
-						log.Printf("删除表 %s 失败: %v", table, err)
-					}
-				}
-			}
-
-			cutoff := time.Now().AddDate(0, -6, 0).UnixMilli()
-			totalDeleted := int64(0)
-
-			for _, symbol := range symbols {
-				kline := Kline{Symbol: symbol}
-				res := db.Table(kline.TableName()).Where("open_time < ?", cutoff).Delete(&Kline{})
-				if res.Error != nil {
-					log.Printf("清理 %s 旧数据失败: %v", symbol, res.Error)
-				} else {
-					totalDeleted += res.RowsAffected
-				}
-			}
-
-			log.Printf("清理旧数据完成: %d 条 (open_time < %d)\n", totalDeleted, cutoff)
+	for {
+		<-ticker.C
+		symbols, err := loadSymbolsFromFile("symbols.json")
+		if err != nil {
+			log.Printf("读取 symbols.json 失败: %v", err)
+			continue
 		}
-	}()
+
+		symbolSet := make(map[string]struct{})
+		for _, s := range symbols {
+			symbolSet["kline_"+s] = struct{}{}
+		}
+		var tables []string
+		err = db.Raw("SELECT name FROM sqlite_master WHERE type='table'").Scan(&tables).Error
+		if err != nil {
+			log.Printf("获取数据库表名失败: %v", err)
+			continue
+		}
+
+		for _, table := range tables {
+			if _, ok := symbolSet[table]; !ok && table != "sqlite_sequence" {
+				log.Printf("删除表: %s", table)
+				if err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS `%s`", table)).Error; err != nil {
+					log.Printf("删除表 %s 失败: %v", table, err)
+				}
+			}
+		}
+
+		cutoff := time.Now().AddDate(0, -6, 0).UnixMilli()
+		totalDeleted := int64(0)
+
+		for _, symbol := range symbols {
+			kline := Kline{Symbol: symbol}
+			res := db.Table(kline.TableName()).Where("open_time < ?", cutoff).Delete(&Kline{})
+			if res.Error != nil {
+				log.Printf("清理 %s 旧数据失败: %v", symbol, res.Error)
+			} else {
+				totalDeleted += res.RowsAffected
+			}
+		}
+
+		log.Printf("清理旧数据完成: %d 条 (open_time < %d)\n", totalDeleted, cutoff)
+	}
 }

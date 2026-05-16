@@ -18,8 +18,10 @@ const (
 )
 
 type xauState struct {
-	lastKTime    int64
-	lastRiseTime int64
+	lastKTime      int64
+	lastRiseTime   int64
+	lastTD9Time    int64
+	lastTD9CloseAt int64
 }
 
 type xauMonitorState struct {
@@ -55,13 +57,30 @@ func startXauMonitor() {
 				continue
 			}
 			if result := checkClosedTD9(closedKlines); result != nil {
+				stateSlot := state.intervals[interval]
+				if stateSlot == nil {
+					stateSlot = &xauState{}
+					state.intervals[interval] = stateSlot
+				}
+				now := time.Now().UnixMilli()
+				lastClosed := closedKlines[len(closedKlines)-1]
+				closeAt, _ := toInt64(lastClosed[6])
+				if closeAt != 0 && closeAt == stateSlot.lastTD9CloseAt {
+					continue
+				}
+				if now-stateSlot.lastTD9Time <= alertCooldown.Milliseconds() {
+					continue
+				}
 				emoji := "🔴"
 				if result.Side == "BUY" {
 					emoji = "🟢"
 				}
-				price := closedKlines[len(closedKlines)-1][4]
+				price := lastClosed[4]
 				msg := fmt.Sprintf("%s *九转信号: %s (%s)*\n\n*神奇九转·收盘确认*\n• 周期: %s\n• 信号: %s\n• 收盘价: %v\n• 状态: 已收盘确认", emoji, xauSymbol, interval, interval, result.Type, price)
-				_ = TelegramSendMessage(msg)
+				if err := TelegramSendMessage(msg); err == nil {
+					stateSlot.lastTD9Time = now
+					stateSlot.lastTD9CloseAt = closeAt
+				}
 			}
 		}
 	}

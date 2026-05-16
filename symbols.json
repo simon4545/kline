@@ -1,6 +1,5 @@
 [
     "OPGUSDT",
-    "QTUMUSDT",
     "BROCCOLIF3BUSDT",
     "CARVUSDT",
     "SQDUSDT",
@@ -83,7 +82,6 @@
     "ATHUSDT",
     "SPORTFUNUSDT",
     "JELLYJELLYUSDT",
-    "BANANAS31USDT",
     "SIRENUSDT",
     "GPSUSDT",
     "IPUSDT",
@@ -97,9 +95,10 @@
     "FARTCOINUSDT",
     "KOMAUSDT",
     "DRIFTUSDT",
-    "GRASSUSDT",
-    "MOODENGUSDT",
     "GOATUSDT",
     "POPCATUSDT",
-    "MEWUSDT"
+    "MEWUSDT",
+    "STARUSDT",
+    "PHAROSUSDT",
+    "BILLUSDT"
 ]

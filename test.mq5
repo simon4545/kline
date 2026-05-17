@@ -16,7 +16,7 @@ input double InpSlopeThreshold = 0.001;     // 斜率阈值
 
 // StdDev phase
 input int    InpStdPeriod = 20;
-input int    InpStdConfirmWindowBars = 4;    // 形态确认数量
+input int    InpStdConfirmWindowBars = 8;    // 形态确认数量
 
 // Setup / invalidation
 input int    InpSwingLookback = 5;
@@ -531,9 +531,14 @@ void ManagePosition(const string symbol)
    if(!g_tp1Done && profitDist >= InpTP1_R * riskR)
    {
       double closeLots = NormalizeDouble(vol * InpTP1_ClosePct, 2);
-      if(closeLots > 0.0) trade.PositionClosePartial(symbol, closeLots);
+      if(closeLots > 0.0)
+      {
+         ulong ticket = (ulong)PositionGetInteger(POSITION_TICKET);
+         trade.PositionClosePartial(ticket, closeLots);
+      }
       double be = RoundPrice(symbol, g_entryPrice);
-      trade.PositionModify(symbol, be, 0.0);
+      ulong ticketForBE = (ulong)PositionGetInteger(POSITION_TICKET);
+      trade.PositionModify(ticketForBE, be, 0.0);
       g_tp1Done = true;
    }
 
@@ -544,11 +549,19 @@ void ManagePosition(const string symbol)
       {
          double v2 = PositionGetDouble(POSITION_VOLUME);
          double closeLots2 = NormalizeDouble(v2 * InpTP2_ClosePct, 2);
-         if(closeLots2 > 0.0) trade.PositionClosePartial(symbol, closeLots2);
+         if(closeLots2 > 0.0)
+         {
+            ulong ticket2 = (ulong)PositionGetInteger(POSITION_TICKET);
+            trade.PositionClosePartial(ticket2, closeLots2);
+         }
       }
       double lockPrice = bullish ? (g_entryPrice + riskR) : (g_entryPrice - riskR);
       lockPrice = RoundPrice(symbol, lockPrice);
-      trade.PositionModify(symbol, lockPrice, 0.0);
+      if(PositionSelectByMagic(symbol, InpMagic))
+      {
+         ulong ticketForLock = (ulong)PositionGetInteger(POSITION_TICKET);
+         trade.PositionModify(ticketForLock, lockPrice, 0.0);
+      }
       g_tp2Done = true;
    }
 }
@@ -568,7 +581,11 @@ void ManageTrailingByEmaClose(const string symbol)
    if(type == POSITION_TYPE_BUY)   closeCond = (m15[0].close < ema[0]);
    else                            closeCond = (m15[0].close > ema[0]);
 
-   if(closeCond) trade.PositionClose(symbol);
+   if(closeCond)
+   {
+      ulong ticket = (ulong)PositionGetInteger(POSITION_TICKET);
+      trade.PositionClose(ticket);
+   }
 }
 
 // ---------- 核心信号决策引擎 ----------
@@ -722,10 +739,9 @@ void OnTick()
    if(IsNewBar(symbol, InpTFSignal, g_lastM15BarTime))
    {
       ManageTrailingByEmaClose(symbol);
+      // 放到外层以达到高频Tick级监听突破和高低点失效
+      ProcessSignal(symbol);
    }
-   
-   // 放到外层以达到高频Tick级监听突破和高低点失效
-   ProcessSignal(symbol);
    
    // Tick级重绘刷新UI状态字
    UpdateDashboard(); 

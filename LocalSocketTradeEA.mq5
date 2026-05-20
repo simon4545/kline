@@ -16,6 +16,9 @@ input int    InpDeviationPts    = 30;
 input int    InpTimerMs         = 200;
 input double InpMaxLots         = 5.0;
 input bool   InpAllowCloseCmd   = true;
+input bool   InpEnableGoldTrail = true;
+input string InpGoldSymbolMatch = "XAUUSD";
+input double InpGoldMoveUSD     = 10.0;
 
 #define INVALID_SOCKET (-1)
 #define SOCKET_ERROR   (-1)
@@ -214,6 +217,126 @@ bool EnsureSymbolReady(string symbol)
       return false;
    }
    return true;
+}
+
+double NormalizeVolumeBySymbol(string symbol,double volume)
+{
+   double minv = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double maxv = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0.0) step = minv;
+   if(step <= 0.0) step = 0.01;
+
+   volume = MathMax(minv, MathMin(maxv, volume));
+   volume = MathFloor(volume / step) * step;
+   int vd = 2;
+   if(step == 1.0) vd = 0;
+   else if(step == 0.1) vd = 1;
+   else if(step == 0.01) vd = 2;
+   else if(step == 0.001) vd = 3;
+   return NormalizeDouble(volume, vd);
+}
+
+bool IsGoldManagedSymbol(string symbol)
+{
+   string up = ToUpperEx(symbol);
+   string key = ToUpperEx(InpGoldSymbolMatch);
+   return StringFind(up, key) >= 0;
+}
+
+void ManageGoldRunner()
+{
+   if(!InpEnableGoldTrail) return;
+
+   for(int i = PositionsTotal() - 1; i >= 0; --i)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+
+      string symbol = PositionGetString(POSITION_SYMBOL);
+      long magic = (long)PositionGetInteger(POSITION_MAGIC);
+      if(magic != InpMagic) continue;
+      if(!IsGoldManagedSymbol(symbol)) continue;
+
+      string comment = PositionGetString(POSITION_COMMENT);
+      if(StringFind(comment, "|HALF_DONE") >= 0)
+         continue;
+
+      long posType = PositionGetInteger(POSITION_TYPE);
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl = PositionGetDouble(POSITION_SL);
+      double tp = PositionGetDouble(POSITION_TP);
+      double volume = PositionGetDouble(POSITION_VOLUME);
+      double minv = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+      int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+
+      MqlTick tk;
+      if(!SymbolInfoTick(symbol, tk)) continue;
+
+      double curPrice = (posType == POSITION_TYPE_BUY ? tk.bid : tk.ask);
+      double move = (posType == POSITION_TYPE_BUY ? (curPrice - openPrice) : (openPrice - curPrice));
+      if(move < InpGoldMoveUSD) continue;
+
+      double half = NormalizeVolumeBySymbol(symbol, volume / 2.0);
+      bool canHalf = (half >= minv && half < volume);
+
+      g_trade.SetExpertMagicNumber(InpMagic);
+      g_trade.SetDeviationInPoints(InpDeviationPts);
+
+      bool close_ok = false;
+      if(canHalf)
+      {
+         close_ok = g_trade.PositionClosePartial(ticket, half, InpDeviationPts);
+         if(close_ok)
+         {
+            Print("[GOLD MANAGE] partial close symbol=", symbol, " ticket=", (string)ticket,
+                  " close=", DoubleToString(half, 2), " remain~", DoubleToString(volume - half, 2));
+         }
+         else
+         {
+            Print("[GOLD MANAGE] PositionClosePartial failed symbol=", symbol, " ret=", g_trade.ResultRetcode(),
+                  " ", g_trade.ResultRetcodeDescription());
+            continue;
+         }
+      }
+      else
+      {
+         close_ok = g_trade.PositionClose(ticket, InpDeviationPts);
+         if(close_ok)
+         {
+            Print("[GOLD MANAGE] full close symbol=", symbol, " ticket=", (string)ticket,
+                  " reason=volume too small for half");
+         }
+         else
+         {
+            Print("[GOLD MANAGE] full close failed symbol=", symbol, " ret=", g_trade.ResultRetcode(),
+                  " ", g_trade.ResultRetcodeDescription());
+         }
+         continue;
+      }
+
+      if(!PositionSelectByTicket(ticket))
+         continue;
+
+      double remain_sl = PositionGetDouble(POSITION_SL);
+      double remain_tp = PositionGetDouble(POSITION_TP);
+      double remain_volume = PositionGetDouble(POSITION_VOLUME);
+      string remain_comment = PositionGetString(POSITION_COMMENT);
+
+      bool be_ok = g_trade.PositionModify(symbol, NormalizeDouble(openPrice, digits), remain_tp);
+      if(be_ok)
+      {
+         Print("[GOLD MANAGE] move SL to BE symbol=", symbol, " ticket=", (string)ticket,
+               " open=", DoubleToString(openPrice, digits), " remain=", DoubleToString(remain_volume, 2));
+      }
+      else
+      {
+         Print("[GOLD MANAGE] PositionModify failed symbol=", symbol, " ret=", g_trade.ResultRetcode(),
+               " ", g_trade.ResultRetcodeDescription(), " oldsl=", DoubleToString(remain_sl, digits));
+      }
+   }
 }
 
 bool CloseBySymbol(string symbol)
@@ -462,9 +585,11 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    PumpSocket();
+   ManageGoldRunner();
 }
 
 void OnTimer()
 {
    PumpSocket();
+   ManageGoldRunner();
 }

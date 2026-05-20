@@ -1,10 +1,10 @@
 // 配置
 const INTERVALS = [
-    { key: '1m', label: '1分钟', wsInterval: '1m' },
     { key: '5m', label: '5分钟', wsInterval: '5m' },
     { key: '15m', label: '15分钟', wsInterval: '15m' },
     { key: '1h', label: '1小时', wsInterval: '1h' },
-    { key: '4h', label: '4小时', wsInterval: '4h' }
+    { key: '4h', label: '4小时', wsInterval: '4h' },
+    { key: '1d', label: '日线', wsInterval: '1d' }
 ];
 const SYMBOL = 'XAUUSDT';
 const LIMIT = 500;
@@ -13,6 +13,11 @@ const LIMIT = 500;
 const chartData = {};
 const charts = {};
 let wsConnections = {};
+
+// TD Sequential(九转)参数
+const TD_LOOKBACK = 4;
+const TD_MAX_COUNT = 9;
+const TD_SHOW_FROM = 6;
 
 // EMA计算
 function calculateEMA(data, period) {
@@ -65,6 +70,132 @@ function calculateRSI(closes, period = 14) {
         }
     }
     return result;
+}
+
+// 计算TD九转 Setup（收盘价与4根前比较）
+function calculateTDSequential(closes, lookback = TD_LOOKBACK) {
+    const sequences = [];
+
+    let activeType = null; // 'buy' | 'sell' | null
+    let activeStart = -1;
+    let activeBars = [];
+    let activeCount = 0;
+
+    function flushActive(finalized) {
+        if (!activeType || activeBars.length === 0) return;
+        sequences.push({
+            type: activeType,
+            start: activeStart,
+            end: activeBars[activeBars.length - 1].index,
+            bars: activeBars.slice(),
+            completed9: finalized && activeCount >= TD_MAX_COUNT
+        });
+        activeType = null;
+        activeStart = -1;
+        activeBars = [];
+        activeCount = 0;
+    }
+
+    for (let i = 0; i < closes.length; i++) {
+        if (i < lookback) {
+            flushActive(false);
+            continue;
+        }
+
+        const c = closes[i];
+        const c4 = closes[i - lookback];
+
+        let barType = null;
+        if (c < c4) barType = 'buy';
+        else if (c > c4) barType = 'sell';
+
+        if (!barType) {
+            flushActive(false);
+            continue;
+        }
+
+        if (activeType === barType) {
+            activeCount += 1;
+        } else {
+            flushActive(false);
+            activeType = barType;
+            activeStart = i;
+            activeCount = 1;
+            activeBars = [];
+        }
+
+        const displayCount = activeCount <= TD_MAX_COUNT ? activeCount : ((activeCount - 1) % TD_MAX_COUNT) + 1;
+        activeBars.push({ index: i, count: displayCount });
+
+        // 满9后结束本轮，后续重新开始下一轮
+        if (activeCount === TD_MAX_COUNT) {
+            flushActive(true);
+        }
+    }
+
+    // 未满9的末尾序列视为未成立
+    flushActive(false);
+
+    return sequences;
+}
+
+function buildTDMarkers(data) {
+    if (!data || data.length <= TD_LOOKBACK) return [];
+
+    const closes = data.map(d => d.close);
+    const sequences = calculateTDSequential(closes);
+    const markers = [];
+
+    for (const seq of sequences) {
+        // 只有“最终达到9”的序列才显示；否则整段不显示（含此前6~8）
+        if (!seq.completed9) continue;
+
+        for (const b of seq.bars) {
+            // 到第6转后，才把本轮1~9全部显示出来
+            if (b.count < TD_SHOW_FROM) continue;
+
+            const startIndex = Math.max(0, b.index - (b.count - 1));
+            for (let j = startIndex; j <= b.index; j++) {
+                const count = j - startIndex + 1;
+                if (count > TD_MAX_COUNT) break;
+                const bar = data[j];
+
+                if (seq.type === 'buy') {
+                    markers.push({
+                        time: bar.time,
+                        position: 'belowBar',
+                        color: count === TD_MAX_COUNT ? '#00e676' : '#26a69a',
+                        shape: 'circle',
+                        text: `${count}`
+                    });
+                } else {
+                    markers.push({
+                        time: bar.time,
+                        position: 'aboveBar',
+                        color: count === TD_MAX_COUNT ? '#ff5252' : '#ef5350',
+                        shape: 'circle',
+                        text: `${count}`
+                    });
+                }
+            }
+        }
+    }
+
+    // 同一时间可能被重复推入，按 time+position 去重，保留最后一条
+    const dedup = new Map();
+    for (const m of markers) {
+        dedup.set(`${m.time}-${m.position}`, m);
+    }
+    return Array.from(dedup.values()).sort((a, b) => a.time - b.time);
+}
+
+function updateTDMarkers(intervalKey) {
+    const data = chartData[intervalKey];
+    const s = charts[intervalKey];
+    if (!data || !s || !s.tdSeries) return;
+
+    s.tdSeries.setData(data.map(d => ({ time: d.time, value: d.close })));
+    s.tdSeries.setMarkers(buildTDMarkers(data));
 }
 
 // 创建图表容器
@@ -147,6 +278,15 @@ function initCharts(intervalConfig) {
         bbLower: bbLowerSeries
     };
 
+    // TD九转标记承载序列（透明，不显示线，仅用于markers）
+    const tdSeries = chart.addLineSeries({
+        color: 'transparent',
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false
+    });
+    charts[intervalConfig.key].tdSeries = tdSeries;
+
     // CCI图
     const cciChart = LightweightCharts.createChart(cciContainer, {
         width: cciContainer.clientWidth, height: 100,
@@ -215,6 +355,9 @@ function updateIndicators(intervalKey) {
     // RSI
     const rsi = calculateRSI(closes, 14);
     s.rsiSeries.setData(times.map((t, i) => ({ time: t, value: rsi[i] })).filter(d => d.value !== null));
+
+    // TD九转
+    updateTDMarkers(intervalKey);
 }
 
 // 获取历史K线

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>威科夫 Spring 形态模拟</title>
+<script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #fafafa; }
+    h2 { text-align: center; margin: 16px 0 8px; }
+    #chart { width: 92%; height: 640px; margin: 0 auto 12px; border: 1px solid #e5e5e5; background: #fff; }
+    .legend { width: 92%; margin: 0 auto 16px; color: #444; font-size: 13px; line-height: 1.6; }
+    .legend b { color: #111; }
+</style>
+</head>
+<body>
+<h2>威科夫 Spring 结构化模拟 K 线图</h2>
+<div id="chart"></div>
+<div class="legend">
+    <b>阶段说明：</b>
+    A(吸筹区间) → ST(二次测试) → Spring(假跌破) → Test(回测确认) → SOS(强势上攻)
+</div>
+
+<script>
+// ===================== 工具函数 =====================
+function rand(min, max) {
+    return min + Math.random() * (max - min);
+}
+
+function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+}
+
+function pushBar(arr, bar) {
+    arr.push({
+        time: arr.length,
+        open: +bar.open.toFixed(2),
+        high: +bar.high.toFixed(2),
+        low: +bar.low.toFixed(2),
+        close: +bar.close.toFixed(2),
+        volume: Math.round(bar.volume)
+    });
+}
+
+function buildBarFromClose(prevClose, drift, bodyAmp, wickUp, wickDown, volBase, volNoise) {
+    const open = prevClose + rand(-0.18, 0.18);
+    const body = drift + rand(-bodyAmp, bodyAmp);
+    const close = open + body;
+    const high = Math.max(open, close) + rand(0.08, wickUp);
+    const low = Math.min(open, close) - rand(0.08, wickDown);
+    const volume = volBase + rand(-volNoise, volNoise);
+    return { open, high, low, close, volume };
+}
+
+// ===================== 构建更真实的 Wyckoff Spring 结构 =====================
+const klines = [];
+let price = 104.5;
+
+// 关键价位：交易区间上沿/下沿
+const TR_HIGH = 102.6;
+const TR_LOW = 97.8;
+
+// 1) PS/SC：先急跌后恐慌抛售（放量）
+for (let i = 0; i < 22; i++) {
+    const drift = -0.24 - i * 0.012; // 逐步加速下跌
+    const bar = buildBarFromClose(price, drift, 0.22, 0.35, 0.45, 130 + i * 3.8, 22);
+    pushBar(klines, bar);
+    price = bar.close;
+}
+
+// 让 SC 触及下沿附近，且出现长下影
+{
+    const open = price + rand(-0.12, 0.12);
+    const close = TR_LOW + rand(0.35, 0.95);
+    const low = TR_LOW - rand(0.22, 0.42);
+    const high = Math.max(open, close) + rand(0.28, 0.56);
+    const volume = 320 + rand(20, 55);
+    const bar = { open, high, low, close, volume };
+    pushBar(klines, bar);
+    price = bar.close;
+}
+const idxSC = klines.length - 1;
+
+// 2) AR：自动反弹，快速回到区间中上部（量能仍高）
+for (let i = 0; i < 9; i++) {
+    const drift = 0.42 - i * 0.02;
+    const bar = buildBarFromClose(price, drift, 0.2, 0.42, 0.24, 240 - i * 8, 20);
+    pushBar(klines, bar);
+    price = bar.close;
+}
+const idxAR = klines.length - 1;
+
+// 3) ST：回测下沿（量较 SC 缩）
+for (let i = 0; i < 8; i++) {
+    const target = TR_LOW + 0.65 + Math.sin(i / 1.8) * 0.45;
+    const drift = clamp(target - price, -0.5, 0.5);
+    const bar = buildBarFromClose(price, drift, 0.18, 0.24, 0.28, 160 - i * 4, 14);
+    pushBar(klines, bar);
+    price = bar.close;
+}
+{
+    const open = price + rand(-0.09, 0.09);
+    const low = TR_LOW - rand(0.08, 0.18);
+    const close = TR_LOW + rand(0.3, 0.58);
+    const high = Math.max(open, close) + rand(0.12, 0.3);
+    const volume = 170 + rand(8, 18);
+    const bar = { open, high, low, close, volume };
+    pushBar(klines, bar);
+    price = bar.close;
+}
+const idxST = klines.length - 1;
+
+// 4) 区间震荡：制造 cause（上下波动，量能逐步收敛）
+for (let i = 0; i < 42; i++) {
+    const center = (TR_HIGH + TR_LOW) / 2 + Math.sin(i / 4) * 0.65;
+    const drift = clamp(center - price, -0.36, 0.36);
+    const bar = buildBarFromClose(price, drift, 0.2, 0.27, 0.3, 145 - i * 1.2, 12);
+    bar.close = clamp(bar.close, TR_LOW + 0.28, TR_HIGH - 0.22);
+    bar.high = Math.max(bar.high, bar.open, bar.close);
+    bar.low = Math.min(bar.low, bar.open, bar.close);
+    pushBar(klines, bar);
+    price = bar.close;
+}
+
+// 5) Spring：假跌破（快速下插 + 放量 + 收回区间）
+{
+    const open = price + rand(-0.12, 0.08);
+    const low = TR_LOW - rand(0.95, 1.35); // 明确跌破区间下沿
+    const close = TR_LOW + rand(0.12, 0.42); // 收回到下沿上方
+    const high = Math.max(open, close) + rand(0.14, 0.32);
+    const volume = 280 + rand(18, 42);
+    const bar = { open, high, low, close, volume };
+    pushBar(klines, bar);
+    price = bar.close;
+}
+const idxSpring = klines.length - 1;
+
+// 6) Test：回测 Spring 低点上方，明显缩量
+for (let i = 0; i < 5; i++) {
+    const open = price + rand(-0.08, 0.08);
+    const low = Math.max(TR_LOW - rand(0.2, 0.45), klines[idxSpring].low + 0.35);
+    const close = TR_LOW + rand(0.28, 0.74);
+    const high = Math.max(open, close) + rand(0.1, 0.24);
+    const volume = 118 + rand(-12, 10); // 显著缩量测试
+    const bar = { open, high, low, close, volume };
+    pushBar(klines, bar);
+    price = bar.close;
+}
+const idxTest = klines.length - 1;
+
+// 7) SOS：放量上攻并突破区间上沿
+for (let i = 0; i < 14; i++) {
+    const drift = 0.3 + i * 0.035;
+    const bar = buildBarFromClose(price, drift, 0.2, 0.34, 0.2, 170 + i * 9, 18);
+    if (i > 8) bar.close = Math.max(bar.close, TR_HIGH + (i - 8) * 0.18 + rand(0.03, 0.1));
+    bar.high = Math.max(bar.high, bar.open, bar.close);
+    bar.low = Math.min(bar.low, bar.open, bar.close);
+    pushBar(klines, bar);
+    price = bar.close;
+}
+const idxSOS = klines.length - 1;
+
+// 8) LPS：回踩上沿后继续抬升
+for (let i = 0; i < 12; i++) {
+    const phase = i < 4 ? -0.12 : 0.22;
+    const bar = buildBarFromClose(price, phase, 0.15, 0.2, 0.22, 178 + i * 4, 12);
+    if (i < 4) {
+        // 回踩不跌回区间内部太深
+        bar.low = Math.max(bar.low, TR_HIGH - rand(0.28, 0.48));
+    }
+    pushBar(klines, bar);
+    price = bar.close;
+}
+const idxLPS = klines.length - 1;
+
+// ===================== 构建区间上/下沿线 =====================
+const trLowLine = klines.map(k => ({ time: k.time, value: TR_LOW }));
+const trHighLine = klines.map(k => ({ time: k.time, value: TR_HIGH }));
+
+// ===================== 创建图表 =====================
+const chartEl = document.getElementById('chart');
+const chart = LightweightCharts.createChart(chartEl, {
+    width: chartEl.clientWidth,
+    height: 640,
+    layout: { backgroundColor:'#ffffff', textColor:'#111' },
+    grid: {
+        vertLines:{ color:'#f0f0f0' },
+        horzLines:{ color:'#f0f0f0' }
+    },
+    rightPriceScale:{ borderColor:'#ddd' },
+    timeScale:{ borderColor:'#ddd', timeVisible:true }
+});
+
+const candleSeries = chart.addCandlestickSeries({
+    upColor:'#26a69a',
+    downColor:'#ef5350',
+    borderVisible:false,
+    wickUpColor:'#26a69a',
+    wickDownColor:'#ef5350'
+});
+candleSeries.setData(klines);
+
+const lowLineSeries = chart.addLineSeries({ color:'#2f6cf6', lineWidth:2, lineStyle: 2 });
+const highLineSeries = chart.addLineSeries({ color:'#7c4dff', lineWidth:2, lineStyle: 2 });
+lowLineSeries.setData(trLowLine);
+highLineSeries.setData(trHighLine);
+
+// ===================== 关键点标注（威科夫语义） =====================
+const markerSeries = chart.addLineSeries({ color:'transparent' });
+markerSeries.setData(klines.map(k => ({ time: k.time, value: k.close })));
+markerSeries.setMarkers([
+    { time: idxSC, position:'belowBar', color:'#ef5350', shape:'arrowDown', text:'SC 抛售高潮' },
+    { time: idxAR, position:'aboveBar', color:'#26a69a', shape:'arrowUp', text:'AR 自动反弹' },
+    { time: idxST, position:'belowBar', color:'#ff9800', shape:'circle', text:'ST 二测' },
+    { time: idxSpring, position:'belowBar', color:'#e91e63', shape:'arrowDown', text:'Spring 假跌破' },
+    { time: idxTest, position:'belowBar', color:'#03a9f4', shape:'circle', text:'Test 缩量回测' },
+    { time: idxSOS, position:'aboveBar', color:'#4caf50', shape:'arrowUp', text:'SOS 放量上攻' },
+    { time: idxLPS, position:'aboveBar', color:'#8bc34a', shape:'circle', text:'LPS 回踩确认' }
+]);
+
+chart.timeScale().fitContent();
+
+window.addEventListener('resize', () => {
+    chart.applyOptions({ width: chartEl.clientWidth });
+});
+</script>
+</body>
+</html>

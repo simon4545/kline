@@ -11,11 +11,17 @@ input string InpTradeSymbol      = "";
 input string InpOrderComment     = "keyboard-ea";
 input double InpCloseDeltaUSD    = 0.5;
 input bool   InpOnlyCurrentChart = true;
+input int    InpPairDiffTickWindow = 30;
+input bool   InpUseTimerForPanel   = false;
+input int    InpPanelTimerSeconds  = 1;
 
 CTrade         g_trade;
 CPositionInfo  g_pos;
 
 string g_panelName = "KB_EA_PANEL";
+
+double g_tickPrices[];
+double g_pairwiseAbsDiffSum = 0.0;
 
 string ResolveTradeSymbol()
 {
@@ -120,14 +126,15 @@ bool ShouldManageCurrentPosition(string symbol)
    return true;
 }
 
-void UpdatePanel()
+double EstimateBalanceLiquidationPrice(string symbol)
 {
-   string symbol = ResolveTradeSymbol();
-
-   int totalPositions = 0;
-   double totalLots = 0.0;
-   double totalProfit = 0.0;
-
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double totalSwap = 0.0;
+   double totalCommission = 0.0;
+   double totalDirectionalLots = 0.0;
+   double weightedOpenPrice = 0.0;
+   long positionType = -1;
+ 
    for(int i = PositionsTotal() - 1; i >= 0; --i)
    {
       ulong ticket = PositionGetTicket(i);
@@ -137,12 +144,110 @@ void UpdatePanel()
          continue;
       if(!ShouldManageCurrentPosition(symbol))
          continue;
+ 
+      long currentType = PositionGetInteger(POSITION_TYPE);
+      double volume = PositionGetDouble(POSITION_VOLUME);
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+ 
+      if(positionType == -1)
+         positionType = currentType;
+      else if(positionType != currentType)
+         return 0.0;
+ 
+      totalDirectionalLots += volume;
+      weightedOpenPrice += openPrice * volume;
+      totalSwap += PositionGetDouble(POSITION_SWAP);
+      totalCommission += PositionGetDouble(POSITION_COMMISSION);
+   }
+ 
+   if(totalDirectionalLots <= 0.0 || positionType == -1)
+      return 0.0;
+ 
+   double avgOpenPrice = weightedOpenPrice / totalDirectionalLots;
+   double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+ 
+   if(tickSize <= 0.0 || tickValue <= 0.0)
+      return 0.0;
+ 
+   double valuePerPriceUnit = (tickValue / tickSize) * totalDirectionalLots;
+   if(valuePerPriceUnit <= 0.0)
+      return 0.0;
+ 
+   double maxLossAbs = balance + totalSwap + totalCommission;
+   if(maxLossAbs <= 0.0)
+      return avgOpenPrice;
+ 
+   double priceMove = maxLossAbs / valuePerPriceUnit;
+   if(positionType == POSITION_TYPE_BUY)
+      return avgOpenPrice - priceMove;
+ 
+   if(positionType == POSITION_TYPE_SELL)
+      return avgOpenPrice + priceMove;
+ 
+   return 0.0;
+}
 
+void TrimTickWindow()
+{
+   int maxWindow = MathMax(2, InpPairDiffTickWindow);
+   int count = ArraySize(g_tickPrices);
+   while(count > maxWindow)
+   {
+      for(int i = 1; i < count; ++i)
+         g_tickPrices[i - 1] = g_tickPrices[i];
+      ArrayResize(g_tickPrices, count - 1);
+      count--;
+   }
+}
+
+void RecalculatePairwiseAbsDiffSum()
+{
+   g_pairwiseAbsDiffSum = 0.0;
+   int count = ArraySize(g_tickPrices);
+   if(count < 2)
+      return;
+
+   for(int i = 0; i < count; ++i)
+   {
+      for(int j = i + 1; j < count; ++j)
+         g_pairwiseAbsDiffSum += MathAbs(g_tickPrices[i] - g_tickPrices[j]);
+   }
+}
+
+void RecordTickPrice(double price)
+{
+   int nextIndex = ArraySize(g_tickPrices);
+   ArrayResize(g_tickPrices, nextIndex + 1);
+   g_tickPrices[nextIndex] = price;
+
+   TrimTickWindow();
+   RecalculatePairwiseAbsDiffSum();
+}
+ 
+void UpdatePanel()
+{
+   string symbol = ResolveTradeSymbol();
+ 
+   int totalPositions = 0;
+   double totalLots = 0.0;
+   double totalProfit = 0.0;
+ 
+   for(int i = PositionsTotal() - 1; i >= 0; --i)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if(!PositionSelectByTicket(ticket))
+         continue;
+      if(!ShouldManageCurrentPosition(symbol))
+         continue;
+ 
       totalPositions++;
       totalLots += PositionGetDouble(POSITION_VOLUME);
       totalProfit += PositionGetDouble(POSITION_PROFIT);
    }
-
+ 
    int pendingOrders = 0;
    for(int j = OrdersTotal() - 1; j >= 0; --j)
    {
@@ -151,32 +256,65 @@ void UpdatePanel()
          continue;
       if(!OrderSelect(ordTicket))
          continue;
-
+ 
       string os = OrderGetString(ORDER_SYMBOL);
       long om = (long)OrderGetInteger(ORDER_MAGIC);
-
+ 
       if(InpOnlyCurrentChart && os != symbol)
          continue;
       if(om != InpMagic)
          continue;
-
+ 
       pendingOrders++;
    }
-
-   string pnlText =
+ 
+   int priceDigits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double liquidationPrice = EstimateBalanceLiquidationPrice(symbol);
+   string liquidationText = "强平价: --";
+   if(liquidationPrice > 0.0)
+      liquidationText = "强平价: " + DoubleToString(liquidationPrice, priceDigits);
+   if(totalPositions > 0 && liquidationPrice <= 0.0)
+      liquidationText = "强平价: 对冲/不可算";
+ 
+   int tickWindowCount = ArraySize(g_tickPrices);
+   string pnlText1 =
       "持仓数: " + IntegerToString(totalPositions) + "\n"
       + "总手数: " + DoubleToString(totalLots, 2) + "\n"
-      + "浮动盈亏: " + DoubleToString(totalProfit, 2);
+      + "浮动盈亏: " + DoubleToString(totalProfit, 2) + "\n"
+      + liquidationText;
+   string pnlText2 =
+      "Tick窗口: " + IntegerToString(tickWindowCount) + "\n"
+      + "价差绝对值和: " + DoubleToString(g_pairwiseAbsDiffSum, priceDigits);
+ 
+   string panelMain = g_panelName + "_MAIN";
+   string panelStat = g_panelName + "_STAT";
 
-   if(ObjectFind(0, g_panelName) < 0)
+   if(ObjectFind(0, panelMain) < 0)
    {
-      ObjectCreate(0, g_panelName, OBJ_LABEL, 0, 0, 0);
-      ObjectSetInteger(0, g_panelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(0, g_panelName, OBJPROP_XDISTANCE, 12);
-      ObjectSetInteger(0, g_panelName, OBJPROP_YDISTANCE, 24);
-      ObjectSetInteger(0, g_panelName, OBJPROP_COLOR, clrWhite);
-      ObjectSetInteger(0, g_panelName, OBJPROP_FONTSIZE, 11);
-      ObjectSetString(0, g_panelName, OBJPROP_FONT, "Consolas");
+      ObjectCreate(0, panelMain, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, panelMain, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, panelMain, OBJPROP_XDISTANCE, 12);
+      ObjectSetInteger(0, panelMain, OBJPROP_YDISTANCE, 24);
+      ObjectSetInteger(0, panelMain, OBJPROP_COLOR, clrWhite);
+      ObjectSetInteger(0, panelMain, OBJPROP_FONTSIZE, 11);
+      ObjectSetInteger(0, panelMain, OBJPROP_BACK, false);
+      ObjectSetInteger(0, panelMain, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, panelMain, OBJPROP_HIDDEN, true);
+      ObjectSetString(0, panelMain, OBJPROP_FONT, "Consolas");
+   }
+
+   if(ObjectFind(0, panelStat) < 0)
+   {
+      ObjectCreate(0, panelStat, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, panelStat, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, panelStat, OBJPROP_XDISTANCE, 12);
+      ObjectSetInteger(0, panelStat, OBJPROP_YDISTANCE, 92);
+      ObjectSetInteger(0, panelStat, OBJPROP_COLOR, clrWhite);
+      ObjectSetInteger(0, panelStat, OBJPROP_FONTSIZE, 11);
+      ObjectSetInteger(0, panelStat, OBJPROP_BACK, false);
+      ObjectSetInteger(0, panelStat, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, panelStat, OBJPROP_HIDDEN, true);
+      ObjectSetString(0, panelStat, OBJPROP_FONT, "Consolas");
    }
 
    color pnlColor = clrWhite;
@@ -185,8 +323,10 @@ void UpdatePanel()
    else if(totalProfit < 0.0)
       pnlColor = clrTomato;
 
-   ObjectSetInteger(0, g_panelName, OBJPROP_COLOR, pnlColor);
-   ObjectSetString(0, g_panelName, OBJPROP_TEXT, pnlText);
+   ObjectSetInteger(0, panelMain, OBJPROP_COLOR, pnlColor);
+   ObjectSetString(0, panelMain, OBJPROP_TEXT, pnlText1);
+   ObjectSetInteger(0, panelStat, OBJPROP_COLOR, clrAqua);
+   ObjectSetString(0, panelStat, OBJPROP_TEXT, pnlText2);
 }
 
 bool CloseAllPositionsAsync()
@@ -320,6 +460,12 @@ void HandleHotkey(int key)
 
 int OnInit()
 {
+   ArrayResize(g_tickPrices, 0);
+   g_pairwiseAbsDiffSum = 0.0;
+
+   if(InpUseTimerForPanel)
+      EventSetTimer(MathMax(1, InpPanelTimerSeconds));
+
    Print("[EA] keyboard trading EA started. symbol=", ResolveTradeSymbol());
    Print("[EA] focus chart then use arrow keys: up=buy, down=sell, left=close all, right=close by delta");
    UpdatePanel();
@@ -328,12 +474,31 @@ int OnInit()
 
 void OnDeinit(const int reason)
 {
-   ObjectDelete(0, g_panelName);
+   EventKillTimer();
+   ObjectDelete(0, g_panelName + "_MAIN");
+   ObjectDelete(0, g_panelName + "_STAT");
 }
 
 void OnTick()
 {
-   UpdatePanel();
+   string symbol = ResolveTradeSymbol();
+   MqlTick tick;
+   if(SymbolInfoTick(symbol, tick))
+   {
+      double price = tick.last;
+      if(price <= 0.0)
+         price = (tick.bid + tick.ask) * 0.5;
+      RecordTickPrice(price);
+   }
+
+   if(!InpUseTimerForPanel)
+      UpdatePanel();
+}
+
+void OnTimer()
+{
+   if(InpUseTimerForPanel)
+      UpdatePanel();
 }
 
 void OnChartEvent(const int id,

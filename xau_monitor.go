@@ -39,6 +39,10 @@ func startXauMonitor() {
 	defer ticker.Stop()
 
 	monitor := func() {
+		utcNow := time.Now().UTC()
+		if utcNow.Weekday() == time.Saturday || utcNow.Weekday() == time.Sunday {
+			return
+		}
 		if k1m, err := fetchXauKlines("1m", longWindowKlineSize); err == nil && len(k1m) > 0 {
 			k1short := takeLastKlines(k1m, shortWindowKlineSize)
 			dropdown(k1short, dropThreshold, true, state)

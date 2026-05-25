@@ -9,13 +9,16 @@ import (
 )
 
 const (
-	xauSymbol            = "XAUUSDT"
-	dropThreshold        = 35.0
 	shortWindowKlineSize = 15
 	longWindowKlineSize  = 240
 	monitorPollInterval  = 15 * time.Second
 	alertCooldown        = 30 * time.Minute
 )
+
+type monitorConfig struct {
+	symbol        string
+	dropThreshold float64
+}
 
 type xauState struct {
 	lastKTime      int64
@@ -34,25 +37,32 @@ type td9Result struct {
 }
 
 func startXauMonitor() {
-	state := &xauMonitorState{intervals: map[string]*xauState{"5m": {}, "15m": {}, "short": {}, "long": {}}}
+	monitors := []monitorConfig{
+		{symbol: "XAUUSDT", dropThreshold: 35.0},
+		{symbol: "XAGUSDT", dropThreshold: 1.0},
+	}
+	states := make(map[string]*xauMonitorState, len(monitors))
+	for _, cfg := range monitors {
+		states[cfg.symbol] = &xauMonitorState{intervals: map[string]*xauState{"5m": {}, "15m": {}, "short": {}, "long": {}}}
+	}
 	ticker := time.NewTicker(monitorPollInterval)
 	defer ticker.Stop()
 
-	monitor := func() {
+	monitor := func(cfg monitorConfig, state *xauMonitorState) {
 		utcNow := time.Now().UTC()
 		if utcNow.Weekday() == time.Saturday || utcNow.Weekday() == time.Sunday {
 			return
 		}
-		if k1m, err := fetchXauKlines("1m", longWindowKlineSize); err == nil && len(k1m) > 0 {
+		if k1m, err := fetchKlines(cfg.symbol, "1m", longWindowKlineSize); err == nil && len(k1m) > 0 {
 			k1short := takeLastKlines(k1m, shortWindowKlineSize)
-			dropdown(k1short, dropThreshold, true, state)
-			riseAlert(k1short, dropThreshold, true, state)
-			dropdown(k1m, dropThreshold*2, false, state)
-			riseAlert(k1m, dropThreshold*2, false, state)
+			dropdown(cfg.symbol, k1short, cfg.dropThreshold, true, state)
+			riseAlert(cfg.symbol, k1short, cfg.dropThreshold, true, state)
+			dropdown(cfg.symbol, k1m, cfg.dropThreshold*2, false, state)
+			riseAlert(cfg.symbol, k1m, cfg.dropThreshold*2, false, state)
 		}
 
 		for _, interval := range []string{"5m", "15m"} {
-			rawKlines, err := fetchXauKlines(interval, 30)
+			rawKlines, err := fetchKlines(cfg.symbol, interval, 30)
 			if err != nil || len(rawKlines) == 0 {
 				continue
 			}
@@ -80,7 +90,7 @@ func startXauMonitor() {
 					emoji = "🟢"
 				}
 				price := lastClosed[4]
-				msg := fmt.Sprintf("%s *九转信号: %s (%s)*\n\n*神奇九转·收盘确认*\n• 周期: %s\n• 信号: %s\n• 收盘价: %v\n• 状态: 已收盘确认", emoji, xauSymbol, interval, interval, result.Type, price)
+				msg := fmt.Sprintf("%s *九转信号: %s (%s)*\n\n*神奇九转·收盘确认*\n• 周期: %s\n• 信号: %s\n• 收盘价: %v\n• 状态: 已收盘确认", emoji, cfg.symbol, interval, interval, result.Type, price)
 				if err := TelegramSendMessage(msg); err == nil {
 					stateSlot.lastTD9Time = now
 					stateSlot.lastTD9CloseAt = closeAt
@@ -89,14 +99,20 @@ func startXauMonitor() {
 		}
 	}
 
-	monitor()
+	runAll := func() {
+		for _, cfg := range monitors {
+			monitor(cfg, states[cfg.symbol])
+		}
+	}
+
+	runAll()
 	for range ticker.C {
-		monitor()
+		runAll()
 	}
 }
 
-func fetchXauKlines(interval string, limit int) ([][]interface{}, error) {
-	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/klines?symbol=%s&interval=%s&limit=%d", xauSymbol, interval, limit)
+func fetchKlines(symbol, interval string, limit int) ([][]interface{}, error) {
+	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/klines?symbol=%s&interval=%s&limit=%d", symbol, interval, limit)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -155,7 +171,7 @@ func checkClosedTD9(closedKlines [][]interface{}) *td9Result {
 	return nil
 }
 
-func dropdown(list [][]interface{}, threshold float64, isShort bool, state *xauMonitorState) {
+func dropdown(symbol string, list [][]interface{}, threshold float64, isShort bool, state *xauMonitorState) {
 	if len(list) == 0 {
 		return
 	}
@@ -180,14 +196,14 @@ func dropdown(list [][]interface{}, threshold float64, isShort bool, state *xauM
 		state.intervals[key] = stateSlot
 	}
 	if amp >= threshold && now-stateSlot.lastKTime > alertCooldown.Milliseconds() {
-		msg := fmt.Sprintf("⚠️ *%s: %s*\n\n跌幅已达: *$%.2f*\n\n最高价:%v\n当前K线最低价:%v", label, xauSymbol, amp, maxHigh, currentLow)
+		msg := fmt.Sprintf("⚠️ *%s: %s*\n\n跌幅已达: *$%.2f*\n\n最高价:%v\n当前K线最低价:%v", label, symbol, amp, maxHigh, currentLow)
 		if err := TelegramSendMessage(msg); err == nil {
 			stateSlot.lastKTime = now
 		}
 	}
 }
 
-func riseAlert(list [][]interface{}, threshold float64, isShort bool, state *xauMonitorState) {
+func riseAlert(symbol string, list [][]interface{}, threshold float64, isShort bool, state *xauMonitorState) {
 	if len(list) == 0 {
 		return
 	}
@@ -216,7 +232,7 @@ func riseAlert(list [][]interface{}, threshold float64, isShort bool, state *xau
 		state.intervals[key] = stateSlot
 	}
 	if amp >= threshold && now-stateSlot.lastRiseTime > alertCooldown.Milliseconds() {
-		msg := fmt.Sprintf("🚀 *%s: %s*\n\n涨幅已达: *$%.2f*\n\n窗口最低价:%v\n当前K线最高价:%v", label, xauSymbol, amp, minLow, currentHigh)
+		msg := fmt.Sprintf("🚀 *%s: %s*\n\n涨幅已达: *$%.2f*\n\n窗口最低价:%v\n当前K线最高价:%v", label, symbol, amp, minLow, currentHigh)
 		if err := TelegramSendMessage(msg); err == nil {
 			stateSlot.lastRiseTime = now
 		}

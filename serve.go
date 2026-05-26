@@ -14,6 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const tradeQueueKey = "trade:queue"
+
 // ================= 中间件与辅助函数 =================
 
 // corsMiddleware 包装 handler，统一处理 CORS 头和 OPTIONS 预检请求
@@ -50,6 +52,12 @@ func writeJSON(w http.ResponseWriter, r *http.Request, data interface{}) {
 		return
 	}
 	json.NewEncoder(w).Encode(data)
+}
+
+func writePlainText(w http.ResponseWriter, status int, text string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(text))
 }
 
 // handleProxyFetch 通用代理转发 handler 工厂
@@ -162,6 +170,60 @@ func handleKlineQuery(db *gorm.DB) http.HandlerFunc {
 		fmt.Println("统计", time.Since(t0).Milliseconds())
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(data)
+	})
+}
+
+func handleTradeSignal() http.HandlerFunc {
+	return corsMiddleware("POST, GET, OPTIONS", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				Side string `json:"side"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writePlainText(w, http.StatusBadRequest, "INVALID")
+				return
+			}
+
+			side := strings.ToUpper(strings.TrimSpace(req.Side))
+			if side != "BUY" && side != "SELL" {
+				writePlainText(w, http.StatusBadRequest, "INVALID")
+				return
+			}
+
+			if _, err := cache.db.RPush([]byte(tradeQueueKey), []byte(side)); err != nil {
+				writePlainText(w, http.StatusInternalServerError, "ERROR")
+				return
+			}
+			if _, err := cache.db.Expire([]byte(tradeQueueKey), 100); err != nil {
+				writePlainText(w, http.StatusInternalServerError, "ERROR")
+				return
+			}
+
+			writePlainText(w, http.StatusOK, side)
+			return
+		}
+
+		if r.Method == http.MethodGet {
+			value, err := cache.db.LPop([]byte(tradeQueueKey))
+			if err != nil {
+				writePlainText(w, http.StatusInternalServerError, "ERROR")
+				return
+			}
+			if value == nil {
+				writePlainText(w, http.StatusOK, "")
+				return
+			}
+
+			side := strings.ToUpper(strings.TrimSpace(string(value)))
+			if side != "BUY" && side != "SELL" {
+				writePlainText(w, http.StatusOK, "")
+				return
+			}
+			writePlainText(w, http.StatusOK, side)
+			return
+		}
+
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	})
 }
 

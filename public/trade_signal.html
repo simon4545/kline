@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trade Signal Sender</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      max-width: 720px;
+    }
+    .row { margin-bottom: 12px; }
+    label { display: inline-block; width: 70px; }
+    input, select, button {
+      font-size: 14px;
+      padding: 6px 8px;
+    }
+    #result {
+      margin-top: 16px;
+      white-space: pre-wrap;
+      background: #f6f8fa;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>发送交易信号</h2>
+
+  <div class="row">
+    <button id="buyBtn">发送 BUY</button>
+    <button id="sellBtn">发送 SELL</button>
+    <button id="readBtn">读取队列头</button>
+  </div>
+
+  <div id="result">等待操作...</div>
+
+  <script>
+    const resultEl = document.getElementById('result');
+
+    function show(data) {
+      resultEl.textContent = data;
+    }
+
+    async function postSignal(side) {
+      try {
+        const resp = await fetch('/trade/signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ side })
+        });
+        const text = await resp.text();
+        show(resp.status + ' ' + text);
+      } catch (e) {
+        show('请求失败: ' + e.message);
+      }
+    }
+
+    async function getSignal() {
+      try {
+        const resp = await fetch('/trade/signal', {
+          method: 'GET'
+        });
+        const text = await resp.text();
+        show(resp.status + ' ' + text);
+      } catch (e) {
+        show('请求失败: ' + e.message);
+      }
+    }
+
+    document.getElementById('buyBtn').addEventListener('click', () => postSignal('BUY'));
+    document.getElementById('sellBtn').addEventListener('click', () => postSignal('SELL'));
+    document.getElementById('readBtn').addEventListener('click', getSignal);
+  </script>
+</body>
+</html>

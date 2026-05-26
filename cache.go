@@ -61,14 +61,26 @@ func (c *LedisCache) SetEx(key string, value interface{}, hours int64) {
 
 // SetExWithErr 设置键值对，过期时间以小时为单位并返回错误
 func (c *LedisCache) SetExWithErr(key string, value interface{}, hours int64) error {
+	return c.SetExSecondsWithErr(key, value, hours*3600)
+}
+
+// SetExSeconds 设置键值对，过期时间以秒为单位
+func (c *LedisCache) SetExSeconds(key string, value interface{}, seconds int64) {
+	if err := c.SetExSecondsWithErr(key, value, seconds); err != nil {
+		log.Printf("Failed to set key %s: %v", key, err)
+	}
+}
+
+// SetExSecondsWithErr 设置键值对，过期时间以秒为单位并返回错误
+func (c *LedisCache) SetExSecondsWithErr(key string, value interface{}, seconds int64) error {
 	if c == nil {
 		return errors.New("cache is nil")
 	}
 	if key == "" {
 		return errors.New("key is empty")
 	}
-	if hours <= 0 {
-		return fmt.Errorf("invalid expiration hours: %d", hours)
+	if seconds <= 0 {
+		return fmt.Errorf("invalid expiration seconds: %d", seconds)
 	}
 
 	c.mu.RLock()
@@ -84,8 +96,7 @@ func (c *LedisCache) SetExWithErr(key string, value interface{}, hours int64) er
 		return fmt.Errorf("set value: %w", err)
 	}
 
-	duration := hours * 3600
-	if _, err := db.Expire([]byte(key), duration); err != nil {
+	if _, err := db.Expire([]byte(key), seconds); err != nil {
 		return fmt.Errorf("set expiration: %w", err)
 	}
 	return nil
@@ -134,6 +145,37 @@ func (c *LedisCache) GetString(key string) (string, bool, error) {
 	}
 	if ttl <= 0 {
 		return "", false, nil
+	}
+
+	return string(value), true, nil
+}
+
+// GetAndDeleteString 读取字符串值并立即删除键
+func (c *LedisCache) GetAndDeleteString(key string) (string, bool, error) {
+	if c == nil {
+		return "", false, errors.New("cache is nil")
+	}
+	if key == "" {
+		return "", false, errors.New("key is empty")
+	}
+
+	c.mu.RLock()
+	db := c.db
+	c.mu.RUnlock()
+	if db == nil {
+		return "", false, errors.New("cache db is nil")
+	}
+
+	value, err := db.Get([]byte(key))
+	if err != nil {
+		return "", false, fmt.Errorf("get value: %w", err)
+	}
+	if value == nil {
+		return "", false, nil
+	}
+
+	if _, err := db.Del([]byte(key)); err != nil {
+		return "", false, fmt.Errorf("delete value: %w", err)
 	}
 
 	return string(value), true, nil

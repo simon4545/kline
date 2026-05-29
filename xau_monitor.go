@@ -61,7 +61,7 @@ func startXauMonitor() {
 			riseAlert(cfg.symbol, k1m, cfg.dropThreshold*2, false, state)
 		}
 
-		for _, interval := range []string{"5m", "15m"} {
+		for _, interval := range []string{"30m", "15m"} {
 			rawKlines, err := fetchKlines(cfg.symbol, interval, 30)
 			if err != nil || len(rawKlines) == 0 {
 				continue
@@ -70,7 +70,7 @@ func startXauMonitor() {
 			if len(closedKlines) == 0 {
 				continue
 			}
-			if result := checkClosedTD9(closedKlines); result != nil {
+			if result := checkClosedTD9WithBullishNext(closedKlines); result != nil {
 				stateSlot := state.intervals[interval]
 				if stateSlot == nil {
 					stateSlot = &xauState{}
@@ -137,14 +137,22 @@ func getClosedKlines(klines [][]interface{}) [][]interface{} {
 	return out
 }
 
-func checkClosedTD9(closedKlines [][]interface{}) *td9Result {
-	if len(closedKlines) < 13 {
+func checkClosedTD9WithBullishNext(closedKlines [][]interface{}) *td9Result {
+	if len(closedKlines) < 14 {
 		return nil
 	}
-	targetIdx := len(closedKlines) - 1
+
+	td9EndIdx := len(closedKlines) - 2
+	nextIdx := len(closedKlines) - 1
+	nextOpen, okOpen := toFloat64(closedKlines[nextIdx][1])
+	nextClose, okClose := toFloat64(closedKlines[nextIdx][4])
+	if !okOpen || !okClose || nextClose <= nextOpen {
+		return nil
+	}
+
 	isBuy9 := true
 	for i := 0; i < 9; i++ {
-		currentCheckIdx := targetIdx - i
+		currentCheckIdx := td9EndIdx - i
 		close, _ := toFloat64(closedKlines[currentCheckIdx][4])
 		close4Before, _ := toFloat64(closedKlines[currentCheckIdx-4][4])
 		if !(close < close4Before) {
@@ -155,9 +163,10 @@ func checkClosedTD9(closedKlines [][]interface{}) *td9Result {
 	if isBuy9 {
 		return &td9Result{Type: "买入 (TD9)", Side: "BUY"}
 	}
+
 	isSell9 := true
 	for i := 0; i < 9; i++ {
-		currentCheckIdx := targetIdx - i
+		currentCheckIdx := td9EndIdx - i
 		close, _ := toFloat64(closedKlines[currentCheckIdx][4])
 		close4Before, _ := toFloat64(closedKlines[currentCheckIdx-4][4])
 		if !(close > close4Before) {

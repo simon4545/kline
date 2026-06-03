@@ -86,7 +86,7 @@ func main() {
 }
 
 func startHttpServer(db *gorm.DB) {
-	wp, err := websocketproxy.NewProxy("wss://fstream.binance.com:443/market", func(r *http.Request) error { return nil })
+	wp, err := websocketproxy.NewProxy("wss://fstream.binance.com:443/market/stream", func(r *http.Request) error { return nil })
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -83,7 +83,7 @@ func handleSymbols() http.HandlerFunc {
 
 func handleHotSymbols() http.HandlerFunc {
 	return corsMiddleware("GET, OPTIONS", func(w http.ResponseWriter, r *http.Request) {
-		js, err := json.Marshal(HotList())
+		js, err := json.Marshal(PointList())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

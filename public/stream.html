@@ -35,10 +35,26 @@
 </head>
 
 <body>
-  <div class="">
+  <div class="container-fluid py-2">
+    <div class="row mb-2 align-items-center">
+      <div class="col-auto">
+        <label for="interval-select" class="form-label mb-0">时间周期</label>
+      </div>
+      <div class="col-auto">
+        <select id="interval-select" class="form-select">
+          <option value="1m">1m</option>
+          <option value="5m" selected>5m</option>
+          <option value="15m">15m</option>
+          <option value="30m">30m</option>
+          <option value="1h">1h</option>
+          <option value="4h">4h</option>
+          <option value="1d">1d</option>
+        </select>
+      </div>
+    </div>
     <div class="row">
       <div class="col col-xs-12 col-sm-12 col-lg-12">
-        <div id="main" style="height:calc( 100vh - 100px )"></div>
+        <div id="main" style="height:calc( 100vh - 140px )"></div>
       </div>
     </div>
   </div>
@@ -60,7 +76,7 @@
       </a>
 </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
-  <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.3/jquery.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
   <script>
     let commonJs = {
       getTokenList() {
@@ -116,6 +132,7 @@
       let currentTokenList;
       let currentPriceMap;
       let globalColor;
+      let currentInterval = '5m';
 
       async function init() {
         globalColor = {};
@@ -153,7 +170,7 @@
 
       function initSocket() {
         let streams = currentTokenList.map((item) => {
-          return item.Symbol.toLowerCase() + "usdt@kline_5m";
+          return item.Symbol.toLowerCase() + `usdt@kline_${currentInterval}`;
         })
         socketClient && socketClient.close();
         // socketClient = new WebSocket("wss://stream.binance.com:9443/stream?streams=" + streams.join("/"));
@@ -183,7 +200,7 @@
 
       async function renderStream(message) {
         try {
-          if (message.stream.indexOf("kline_5m") >= 0) {
+          if (message.stream.indexOf(`kline_${currentInterval}`) >= 0) {
             let pair = message.data.s.toLowerCase();
             let k = message.data.k;
             let symbol = pair.replace("usdt", "").toUpperCase();
@@ -299,7 +316,7 @@
             ...datasetWithFilters
           ],
           title: {
-            text: `价格波动`
+            text: `价格波动 (${currentInterval})`
           },
           tooltip: {
             order: 'valueDesc',
@@ -327,6 +344,12 @@
         myChart.setOption(option);
       }
 
+      $('#interval-select').on('change', function () {
+        currentInterval = $(this).val();
+        socketClient && socketClient.close();
+        init();
+      });
+ 
     });
   </script>
 </body>

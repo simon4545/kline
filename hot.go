@@ -52,6 +52,15 @@ func ContainsString(slice []string, target string) bool {
 	}
 	return false
 }
+
+var pointSymbols = []string{
+	"FLNCUSDT", "BABAUSDT", "MRVLUSDT", "AVGOUSDT", "COHRUSDT", "LITEUSDT", "NOKUSDT", "OPENAIUSDT", "CRWVUSDT",
+	"NVDAUSDT", "SPCXUSDT", "BBXUSDT", "WMTUSDT", "CSCOUSDT", "NVOUSDT","PLTRUSDT",
+	"AAPLUSDT", "BEUSDT", "GOOGLUSDT","AMDUSDT", "SNDKUSDT", "INTCUSDT",
+	"DRAMUSDT", "WDCUSDT", "MUUSDT", "ORCLUSDT", "NBISUSDT", 
+	"MRVLUSDT", "ARMUSDT", "MSFTUSDT", "TSLAUSDT", "CBRSUSDT", "METAUSDT", "RKLBUSDT", 
+}
+
 func HotList() (symols HotPairList) {
 	request = gorequest.New()
 	url := "https://fapi.binance.com/fapi/v1/ticker/24hr"
@@ -76,8 +85,49 @@ func HotList() (symols HotPairList) {
 			}
 		}
 	}
+	return loadPairKlines(sortedTopPairs(symols, 30))
+}
+
+func PointList() (symols HotPairList) {
+	request = gorequest.New()
+	url := "https://fapi.binance.com/fapi/v1/ticker/24hr"
+	_, responseBody, err := request.Get(url).End()
+	if err != nil {
+		log.Fatal("Error making GET request:", err)
+	}
+
+	pointSymbolMap := make(map[string]struct{}, len(pointSymbols))
+	for _, symbol := range pointSymbols {
+		pointSymbolMap[symbol] = struct{}{}
+	}
+
+	value := gjson.Parse(responseBody).Array()
+	for _, symbol := range value {
+		symbolCoin := symbol.Get("symbol").String()
+		if _, ok := pointSymbolMap[symbolCoin]; !ok {
+			continue
+		}
+
+		lastPrice := symbol.Get("lastPrice").Float()
+		volume24h := symbol.Get("quoteVolume").Float()
+		priceChangePercent := symbol.Get("priceChangePercent").Float()
+		baseAsset := strings.TrimSuffix(symbolCoin, "USDT")
+		pair := HotPair{Symbol: baseAsset, LastPrice: lastPrice, QuoteVolume: volume24h, Percent: priceChangePercent}
+		symols = append(symols, &pair)
+	}
+
+	return loadPairKlines(symols)
+}
+
+func sortedTopPairs(symols HotPairList, limit int) HotPairList {
 	sort.Sort(symols)
-	symols = symols[:30]
+	if len(symols) > limit {
+		symols = symols[:limit]
+	}
+	return symols
+}
+
+func loadPairKlines(symols HotPairList) HotPairList {
 	swg := sizedwaitgroup.New(4)
 	for _, s := range symols {
 		swg.Add()
@@ -85,12 +135,10 @@ func HotList() (symols HotPairList) {
 			defer swg.Done()
 			list := CollectTrendWithSymbol(s.Symbol, "5m")
 			s.Klines = list
-			// time.Sleep(time.Millisecond * 200)
 		}(s)
 	}
 	swg.Wait()
-
-	return
+	return symols
 }
 func CollectTrendWithSymbol(pair string, interval string) (klines []KLine) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/klines?symbol=%sUSDT&interval=%s&limit=%d", pair, interval, 50)

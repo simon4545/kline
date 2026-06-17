@@ -82,7 +82,7 @@
       <!-- ===== Card: 下单 ===== -->
       <div class="card">
         <div class="card-title"><span class="icon">📈</span> 下单（限价订单）</div>
-        <div class="card-desc">填写交易对、数量与限价，提交限价订单至币安永续合约。</div>
+        <div class="card-desc">填写交易对、USDT总金额与限价，系统将根据精度自动计算下单数量。</div>
 
         <div class="input-group">
           <input id="symbol" type="text" placeholder="交易对（如 BTCUSDT）" class="flex-1" />
@@ -94,7 +94,7 @@
             <option value="LONG">⬆️ LONG（多头）</option>
             <option value="SHORT">⬇️ SHORT（空头）</option>
           </select>
-          <input id="qty" type="text" placeholder="数量" class="flex-1" />
+          <input id="qty" type="text" placeholder="USDT金额" class="flex-1" style="min-width:90px" />
           <input id="limit-price" type="text" placeholder="限价" class="flex-1" />
           <button id="place-order" class="btn btn-primary">🚀 下单</button>
         </div>
@@ -151,6 +151,15 @@
         const decimals = (String(step).split('.')[1] || '').length;
         const rounded = Math.round(Number(value) / stepNum) * stepNum;
         return Number(rounded.toFixed(decimals));
+      }
+
+      // Round DOWN to nearest step (ensures qty * price ≤ USDT amount)
+      function roundDownByStep(value, step) {
+        const stepNum = Number(step);
+        if (!stepNum || stepNum <= 0) return value;
+        const decimals = (String(step).split('.')[1] || '').length;
+        const floored = Math.floor(Number(value) / stepNum) * stepNum;
+        return Number(floored.toFixed(decimals));
       }
 
       function trimNumberString(n, maxDecimals = 8) {
@@ -559,18 +568,44 @@
         }
       });
 
-      // ===== Place order =====
+      // ===== Place order (USDT amount → quantity) =====
       byId('place-order').addEventListener('click', async () => {
         const symbol = byId('symbol').value.trim().toUpperCase();
         const side = byId('side').value;
         const positionSide = byId('position-side').value;
-        const qty = byId('qty').value.trim();
+        const usdtAmount = byId('qty').value.trim();
         const limitPrice = byId('limit-price').value.trim();
         const out = byId('order-result');
 
         if (!symbol) { showMsg(out, '⚠️ 请输入交易对', 'warn'); return; }
-        if (!qty) { showMsg(out, '⚠️ 请输入数量', 'warn'); return; }
+        if (!usdtAmount) { showMsg(out, '⚠️ 请输入USDT金额', 'warn'); return; }
         if (!limitPrice) { showMsg(out, '⚠️ 请输入限价', 'warn'); return; }
+
+        const usdtNum = Number(usdtAmount);
+        const priceNum = Number(limitPrice);
+        if (!usdtNum || usdtNum <= 0) { showMsg(out, '⚠️ USDT金额必须大于0', 'warn'); return; }
+        if (!priceNum || priceNum <= 0) { showMsg(out, '⚠️ 限价必须大于0', 'warn'); return; }
+
+        // Get exchange info for stepSize
+        const info = exchangeInfoCache[symbol];
+        if (!info) {
+          showMsg(out, '⚠️ 未找到该交易对的交易规则，请先在页面上获取过该交易对信息后重试', 'warn');
+          return;
+        }
+
+        // Calculate raw quantity: USDT amount / limit price
+        let rawQty = usdtNum / priceNum;
+        // Round down to stepSize so that qty * price ≤ USDT amount
+        let finalQty = roundDownByStep(rawQty, info.stepSize);
+
+        // Enforce minQty
+        const minQtyNum = Number(info.minQty);
+        if (minQtyNum > 0 && finalQty < minQtyNum) {
+          showMsg(out, `⚠️ 计算出的数量 ${finalQty} 低于最小下单数量 ${minQtyNum}，请增加USDT金额`, 'warn');
+          return;
+        }
+
+        const qtyStr = trimNumberString(finalQty);
 
         const creds = getRequiredCreds();
         if (!creds) { showMsg(out, '⚠️ 请先选择或新增一个用户凭证。', 'warn'); return; }
@@ -578,11 +613,11 @@
         if (!apiKey || !apiSecret) { showMsg(out, '⚠️ 请先保存 API 凭证。', 'warn'); return; }
 
         try {
-          showMsg(out, '⏳ 下单中...', 'info');
+          showMsg(out, `⏳ 下单中... USDT ${usdtAmount} → 数量 ${qtyStr} @ ${limitPrice}`, 'info');
           const base = 'https://fapi.binance.com';
           const params = {
             symbol, side, positionSide, type: 'LIMIT',
-            quantity: qty, price: limitPrice,
+            quantity: qtyStr, price: limitPrice,
             timeInForce: 'GTC',
             timestamp: Date.now(), recvWindow: 10000
           };
@@ -592,7 +627,7 @@
             showMsg(out, '❌ 下单失败: ' + (resp.msg || resp.message || JSON.stringify(resp)), 'error');
             return;
           }
-          showMsg(out, '✅ 下单成功！订单 ID: ' + (resp.orderId || '—'), 'success');
+          showMsg(out, `✅ 下单成功！订单 ID: ${resp.orderId || '—'}（USDT ${usdtAmount} → ${qtyStr} 张）`, 'success');
           setTimeout(() => byId('fetch-account').click(), 1500);
         } catch (e) {
           showMsg(out, '❌ 下单请求出错：' + e.message, 'error');

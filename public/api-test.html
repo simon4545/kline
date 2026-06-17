@@ -155,6 +155,51 @@
         border-bottom-color: #3b82f6;
       }
 
+      /* curl command box */
+      .curl-box {
+        background: rgba(7, 16, 26, 0.8);
+        border: 1px solid rgba(30, 41, 59, 0.6);
+        border-radius: 8px;
+        padding: 16px 18px;
+        margin-top: 10px;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 12px;
+        line-height: 1.8;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 400px;
+        overflow-y: auto;
+        position: relative;
+      }
+      .curl-box .code-line { color: #93c5fd; display: block; }
+      .curl-box .code-line.cmt { color: #64748b; font-style: italic; }
+      .curl-box .code-line.kw { color: #c084fc; }
+      .curl-box .code-line.str { color: #34d399; }
+      .curl-box .code-line.header { color: #fbbf24; }
+      .curl-copy-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        padding: 4px 10px;
+        font-size: 11px;
+        border-radius: 4px;
+        background: rgba(59, 130, 246, 0.15);
+        color: #60a5fa;
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: inherit;
+      }
+      .curl-copy-btn:hover { background: rgba(59, 130, 246, 0.25); }
+      .curl-copy-btn.copied { background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.3); }
+      .curl-gen-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px !important;
+        font-size: 11px !important;
+      }
+
       /* Skeleton loading */
       @keyframes shimmer {
         0% { background-position: -200px 0; }
@@ -178,7 +223,7 @@
           <div class="header-icon">🧪</div>
           <div class="header-text">
             <h1>API 模型测试工具</h1>
-            <div class="sub">OpenAI 兼容接口 · 模型探测 & 连通性测试</div>
+            <div class="sub">OpenAI / Anthropic 兼容接口 · 模型探测 & 连通性测试</div>
           </div>
         </div>
         <div class="header-badge">
@@ -190,15 +235,22 @@
       <!-- ===== Card 1: API 配置 ===== -->
       <div class="card">
         <div class="card-title"><span class="icon">🔌</span> API 连接配置</div>
-        <div class="card-desc">填写 API 根地址与 Authorization 密钥（仅保存在本地浏览器，不会上传）。</div>
+        <div class="card-desc">填写 API 根地址与密钥，选择对应协议后即可获取模型列表并测试连通性（所有数据仅保存在本地浏览器）。</div>
 
         <div class="input-group">
-          <input id="api-url" type="text" placeholder="API 地址，如 https://aiapi.up.railway.app" class="flex-1" value="https://aiapi.up.railway.app" />
-          <input id="api-auth" type="password" placeholder="Authorization: Bearer sk-xxx..." class="flex-1" value="sk-" />
+          <div style="display:flex;gap:10px;flex-wrap:wrap;width:100%;">
+            <input id="api-url" type="text" placeholder="API 地址，如 https://aiapi.up.railway.app" class="flex-1" value="https://aiapi.up.railway.app" />
+            <select id="api-protocol" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(30,41,59,0.8);background:rgba(7,16,26,0.7);color:#e2e8f0;font-size:12px;font-family:inherit;outline:none;min-width:120px;cursor:pointer;">
+              <option value="openai">🧠 OpenAI (ChatGPT)</option>
+              <option value="anthropic">🌲 Anthropic (Claude)</option>
+            </select>
+          </div>
+          <input id="api-auth" type="password" placeholder="Authorization: Bearer sk-xxx... (OpenAI) 或 x-api-key: sk-ant-xxx... (Anthropic)" class="flex-1" value="sk-" style="margin-top:8px;" />
         </div>
 
         <div class="btn-group" style="margin-top:10px;">
           <button id="fetch-models" class="btn btn-primary btn-sm">📋 获取模型列表</button>
+          <button id="curl-list-btn" class="btn btn-secondary btn-sm">🖥️ curl 拉取列表</button>
           <button id="save-config" class="btn btn-secondary btn-sm">💾 保存配置</button>
           <button id="clear-config" class="btn btn-secondary btn-sm">🗑️ 清除配置</button>
         </div>
@@ -275,6 +327,22 @@
         </div>
       </div>
 
+      <!-- ===== Card: curl 命令 ===== -->
+      <div class="card">
+        <div class="card-title"><span class="icon">🖥️</span> curl 命令生成</div>
+        <div class="card-desc">如果浏览器跨域无法直接请求，可以在此手动输入模型 ID 生成 curl 命令，复制到终端执行。</div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <input id="curl-model" type="text" placeholder="模型 ID，如 gpt-4o / claude-3-opus" class="flex-1" value="" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(30,41,59,0.8);background:rgba(7,16,26,0.7);color:#e2e8f0;font-size:12px;font-family:inherit;outline:none;min-width:200px;flex:2;" />
+          <button id="gen-curl-btn" class="btn btn-primary btn-sm">🪄 生成 curl</button>
+        </div>
+
+        <div class="curl-box" id="curl-output" style="display:none;">
+          <button class="curl-copy-btn" id="curl-copy-btn">📋 复制</button>
+          <div id="curl-code"></div>
+        </div>
+      </div>
+
       <footer>
         API 模型测试工具 · 所有数据仅保存在本地浏览器 · 不会上传至任何服务器
       </footer>
@@ -292,6 +360,7 @@
         sortAsc: true,
         configKey: 'api_test_config',
         historyKey: 'api_test_history',
+        protocol: 'openai',   // 'openai' | 'anthropic'
       };
 
       // ============================================================
@@ -301,7 +370,9 @@
       const el = {
         url:        $('api-url'),
         auth:       $('api-auth'),
+        protocol:   $('api-protocol'),
         fetchBtn:   $('fetch-models'),
+        curlListBtn: $('curl-list-btn'),
         saveBtn:    $('save-config'),
         clearBtn:   $('clear-config'),
         configMsg:  $('config-msg'),
@@ -322,6 +393,12 @@
         historyEmpty: $('history-empty'),
         historyWrap:  $('history-table-wrap'),
         historyTbody: $('history-tbody'),
+
+        curlModel:   $('curl-model'),
+        genCurlBtn:  $('gen-curl-btn'),
+        curlOutput:  $('curl-output'),
+        curlCode:    $('curl-code'),
+        curlCopyBtn: $('curl-copy-btn'),
       };
 
       // ============================================================
@@ -334,6 +411,10 @@
             const cfg = JSON.parse(raw);
             if (cfg.url) el.url.value = cfg.url;
             if (cfg.auth) el.auth.value = cfg.auth;
+            if (cfg.protocol) {
+              el.protocol.value = cfg.protocol;
+              STATE.protocol = cfg.protocol;
+            }
           }
         } catch (_) { /* ignore */ }
       }
@@ -341,6 +422,7 @@
         localStorage.setItem(STATE.configKey, JSON.stringify({
           url: el.url.value.trim(),
           auth: el.auth.value.trim(),
+          protocol: el.protocol.value,
         }));
         showMsg('config-msg', '✅ 配置已保存到本地浏览器', 'success');
       }
@@ -348,6 +430,8 @@
         localStorage.removeItem(STATE.configKey);
         el.url.value = 'https://aiapi.up.railway.app';
         el.auth.value = '';
+        el.protocol.value = 'openai';
+        STATE.protocol = 'openai';
         showMsg('config-msg', '🗑️ 配置已清除', 'info');
       }
 
@@ -378,20 +462,29 @@
         url = url.replace(/\/+$/, ''); // trailing slash
         return url;
       }
-      function getAuthHeader() {
-        let auth = el.auth.value.trim();
-        if (!auth) throw new Error('请填写 Authorization');
-        // Auto-prepend "Bearer " if user only pasted the key
-        if (!auth.startsWith('Bearer ') && !auth.startsWith('bearer ')) {
-          auth = 'Bearer ' + auth;
-        }
-        return auth;
-      }
       function getHeaders() {
-        const auth = getAuthHeader();
+        const protocol = el.protocol.value;
+        const auth = el.auth.value.trim();
+        if (!auth) throw new Error('请填写 API 密钥');
+
+        if (protocol === 'anthropic') {
+          // Anthropic uses x-api-key header (no Bearer prefix)
+          const key = auth.replace(/^Bearer\s+/i, '');
+          return {
+            'Content-Type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+          };
+        }
+
+        // OpenAI: Authorization: Bearer xxx
+        let bearer = auth;
+        if (!bearer.startsWith('Bearer ') && !bearer.startsWith('bearer ')) {
+          bearer = 'Bearer ' + bearer;
+        }
         return {
           'Content-Type': 'application/json',
-          'Authorization': auth,
+          'Authorization': bearer,
         };
       }
 
@@ -500,9 +593,12 @@
                 ${m.created ? '<br><span style="font-size:10px;color:#475569;">created: ' + new Date(m.created * 1000).toLocaleDateString('zh-CN') + '</span>' : ''}
               </td>
               <td style="font-size:12px;color:#94a3b8;">${escapeHtml(m.owned_by || '—')}</td>
-              <td class="col-actions">
+              <td class="col-actions" style="white-space:nowrap;">
                 <button class="btn btn-success test-btn" data-model="${escapeHtml(m.id)}" ${isTesting ? 'disabled' : ''}>
                   ${isTesting ? '<span class="spinner"></span>' : '▶'} 测试
+                </button>
+                <button class="btn btn-secondary curl-gen-btn" data-model="${escapeHtml(m.id)}" title="生成此模型的 curl 命令">
+                  🖥️ curl
                 </button>
               </td>
             </tr>
@@ -517,6 +613,14 @@
             testModel(modelId);
           });
         });
+        // Attach curl listeners
+        el.tbody.querySelectorAll('.curl-gen-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const modelId = btn.dataset.model;
+            el.curlModel.value = modelId;
+            generateCurlAndShow();
+          });
+        });
       }
 
       // ============================================================
@@ -529,17 +633,34 @@
 
         const baseUrl = getBaseUrl();
         const headers = getHeaders();
+        const protocol = el.protocol.value;
         const startTime = performance.now();
-        const record = { model: modelId, status: 'testing', response: '', error: '', duration: 0, time: nowISO() };
+        const record = { model: modelId, protocol, status: 'testing', response: '', error: '', duration: 0, time: nowISO() };
 
         try {
-          const resp = await fetch(baseUrl + '/v1/chat/completions', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
+          let url, body;
+
+          if (protocol === 'anthropic') {
+            // Anthropic Messages API
+            url = baseUrl + '/v1/messages';
+            body = JSON.stringify({
+              model: modelId,
+              max_tokens: 1024,
+              messages: [{ role: 'user', content: 'Hello!' }],
+            });
+          } else {
+            // OpenAI Chat Completions API
+            url = baseUrl + '/v1/chat/completions';
+            body = JSON.stringify({
               model: modelId,
               messages: [{ role: 'user', content: 'Hello!' }],
-            }),
+            });
+          }
+
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers,
+            body,
           });
 
           const duration = performance.now() - startTime;
@@ -584,12 +705,22 @@
 
         let html = '';
         if (status === 'success') {
-          // Extract the reply content if it's a chat completion response
+          // Extract reply content — support both OpenAI and Anthropic formats
           let reply = '';
           let usage = null;
+
           if (data.choices && data.choices.length > 0) {
+            // OpenAI format
             const choice = data.choices[0];
             reply = choice.message?.content || choice.text || JSON.stringify(choice);
+            usage = data.usage;
+          } else if (data.content && data.content.length > 0) {
+            // Anthropic format
+            for (const block of data.content) {
+              if (block.type === 'text') {
+                reply += block.text;
+              }
+            }
             usage = data.usage;
           }
 
@@ -599,9 +730,13 @@
           if (usage) {
             html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(30,41,59,0.4);">';
             html += '<span style="color:#64748b;font-size:11px;">Token 用量：</span>';
-            html += '<span class="highlight">' + (usage.prompt_tokens || '?') + '</span> 输入 → ';
-            html += '<span class="highlight-green">' + (usage.completion_tokens || '?') + '</span> 输出 ';
-            html += '<span style="color:#475569;">(总计 ' + (usage.total_tokens || '?') + ')</span>';
+            // Anthropic uses input_tokens / output_tokens, OpenAI uses prompt_tokens / completion_tokens
+            const inTokens = usage.input_tokens ?? usage.prompt_tokens ?? '?';
+            const outTokens = usage.output_tokens ?? usage.completion_tokens ?? '?';
+            const totalTokens = usage.total_tokens ?? (typeof inTokens === 'number' && typeof outTokens === 'number' ? inTokens + outTokens : '?');
+            html += '<span class="highlight">' + inTokens + '</span> 输入 → ';
+            html += '<span class="highlight-green">' + outTokens + '</span> 输出 ';
+            html += '<span style="color:#475569;">(总计 ' + totalTokens + ')</span>';
             html += '</div>';
           }
           html += '<div style="margin-top:8px;font-size:11px;color:#475569;">';
@@ -654,7 +789,14 @@
           if (isOk) {
             try {
               const parsed = JSON.parse(r.response);
-              detail = parsed.choices?.[0]?.message?.content || '(empty response)';
+              // Try OpenAI format first, then Anthropic format
+              if (parsed.choices?.[0]?.message?.content) {
+                detail = parsed.choices[0].message.content;
+              } else if (parsed.content && Array.isArray(parsed.content)) {
+                detail = parsed.content.map(b => b.text || '').join('');
+              } else {
+                detail = '(empty/no content)';
+              }
               if (detail.length > 80) detail = detail.slice(0, 80) + '...';
             } catch {
               detail = '(response logged)';
@@ -664,9 +806,11 @@
             if (detail.length > 80) detail = detail.slice(0, 80) + '...';
           }
 
+          const protoLabel = r.protocol === 'anthropic' ? '🌲' : '🧠';
+
           html += `
             <tr>
-              <td class="model-id" style="font-size:12px;">${escapeHtml(r.model)}</td>
+              <td class="model-id" style="font-size:12px;">${protoLabel} ${escapeHtml(r.model)}</td>
               <td>
                 <span class="tag ${isOk ? 'tag-long' : 'tag-sell'}">${isOk ? '✅ 成功' : '❌ 失败'}</span>
               </td>
@@ -682,9 +826,168 @@
       }
 
       // ============================================================
+      //  curl 命令生成
+      // ============================================================
+      function escapeShellStr(str) {
+        return "'" + str.replace(/'/g, "'\\''") + "'";
+      }
+
+      function generateCurlAndShow() {
+        const modelId = el.curlModel.value.trim();
+        if (!modelId) {
+          showMsg('config-msg', '❌ 请填写模型 ID', 'error');
+          return;
+        }
+
+        const baseUrl = getBaseUrl().replace(/\/+$/, '');
+        const auth = el.auth.value.trim();
+        const protocol = el.protocol.value;
+
+        let lines;
+        if (protocol === 'anthropic') {
+          const key = auth.replace(/^Bearer\s+/i, '');
+          const apiUrl = baseUrl + '/v1/messages';
+          const body = JSON.stringify({
+            model: modelId,
+            max_tokens: 256,
+            messages: [{ role: 'user', content: 'Hello!' }],
+          }, null, 2);
+          lines = [
+            '# 🌲 Anthropic 协议',
+            '# POST ' + apiUrl,
+            '# 模型: ' + modelId,
+            '',
+            'curl -s -X POST ' + escapeShellStr(apiUrl) + ' \\',
+            '  -H "Content-Type: application/json" \\',
+            '  -H "x-api-key: ' + key + '" \\',
+            '  -H "anthropic-version: 2023-06-01" \\',
+            '  -d ' + escapeShellStr(body),
+          ];
+        } else {
+          let bearer = auth;
+          if (!bearer.startsWith('Bearer ') && !bearer.startsWith('bearer ')) {
+            bearer = 'Bearer ' + bearer;
+          }
+          const apiUrl = baseUrl + '/v1/chat/completions';
+          const body = JSON.stringify({
+            model: modelId,
+            messages: [{ role: 'user', content: 'Hello!' }],
+          }, null, 2);
+          lines = [
+            '# 🧠 OpenAI 协议',
+            '# POST ' + apiUrl,
+            '# 模型: ' + modelId,
+            '',
+            'curl -s -X POST ' + escapeShellStr(apiUrl) + ' \\',
+            '  -H "Content-Type: application/json" \\',
+            '  -H "Authorization: ' + bearer + '" \\',
+            '  -d ' + escapeShellStr(body),
+          ];
+        }
+
+        // Render with simple syntax highlighting
+        const html = lines.map(line => {
+          const escaped = escapeHtml(line);
+          let cls = 'code-line';
+          if (line.startsWith('# ')) cls += ' cmt';
+          else if (line.startsWith('curl')) cls += ' kw';
+          else if (line.startsWith('  -d')) cls += ' str';
+          return '<span class="' + cls + '">' + escaped + '</span>';
+        }).join('');
+
+        el.curlCode.innerHTML = html;
+        el.curlOutput.style.display = 'block';
+        showMsg('config-msg', '✅ curl 命令已生成，复制后到终端执行', 'success');
+      }
+
+      function copyCurl() {
+        const text = el.curlCode.textContent;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+          el.curlCopyBtn.textContent = '✅ 已复制';
+          el.curlCopyBtn.classList.add('copied');
+          setTimeout(() => {
+            el.curlCopyBtn.textContent = '📋 复制';
+            el.curlCopyBtn.classList.remove('copied');
+          }, 2000);
+        }).catch(() => {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          el.curlCopyBtn.textContent = '✅ 已复制';
+          el.curlCopyBtn.classList.add('copied');
+          setTimeout(() => {
+            el.curlCopyBtn.textContent = '📋 复制';
+            el.curlCopyBtn.classList.remove('copied');
+          }, 2000);
+        });
+      }
+
+      // ============================================================
+      //  curl: 拉取模型列表
+      // ============================================================
+      function showCurlForModels() {
+        const baseUrl = getBaseUrl().replace(/\/+$/, '');
+        const auth = el.auth.value.trim();
+        const protocol = el.protocol.value;
+
+        let lines;
+        if (protocol === 'anthropic') {
+          const key = auth.replace(/^Bearer\s+/i, '');
+          const apiUrl = baseUrl + '/v1/models';
+          lines = [
+            '# 🌲 Anthropic 协议 · 获取模型列表',
+            '# GET ' + apiUrl,
+            '',
+            'curl -s ' + escapeShellStr(apiUrl) + ' \\',
+            '  -H "Content-Type: application/json" \\',
+            '  -H "x-api-key: ' + key + '" \\',
+            '  -H "anthropic-version: 2023-06-01"',
+          ];
+        } else {
+          let bearer = auth;
+          if (!bearer.startsWith('Bearer ') && !bearer.startsWith('bearer ')) {
+            bearer = 'Bearer ' + bearer;
+          }
+          const apiUrl = baseUrl + '/v1/models';
+          lines = [
+            '# 🧠 OpenAI 协议 · 获取模型列表',
+            '# GET ' + apiUrl,
+            '',
+            'curl -s ' + escapeShellStr(apiUrl) + ' \\',
+            '  -H "Content-Type: application/json" \\',
+            '  -H "Authorization: ' + bearer + '"',
+          ];
+        }
+
+        const html = lines.map(line => {
+          const escaped = escapeHtml(line);
+          let cls = 'code-line';
+          if (line.startsWith('# ')) cls += ' cmt';
+          else if (line.startsWith('curl')) cls += ' kw';
+          return '<span class="' + cls + '">' + escaped + '</span>';
+        }).join('');
+
+        el.curlCode.innerHTML = html;
+        el.curlOutput.style.display = 'block';
+        showMsg('config-msg', '✅ 拉取列表 curl 命令已生成', 'success');
+      }
+
+      // ============================================================
       //  Events
       // ============================================================
       el.fetchBtn.addEventListener('click', fetchModels);
+      el.curlListBtn.addEventListener('click', showCurlForModels);
+      el.curlCopyBtn.addEventListener('click', copyCurl);
+      el.genCurlBtn.addEventListener('click', generateCurlAndShow);
+
+      // Enter key in curl model input to generate
+      el.curlModel.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') generateCurlAndShow();
+      });
 
       el.saveBtn.addEventListener('click', saveConfig);
       el.clearBtn.addEventListener('click', function() {
@@ -726,9 +1029,40 @@
       });
 
       // ============================================================
+      //  Protocol switch — update UI hints
+      // ============================================================
+      function updateProtocolUI() {
+        const proto = el.protocol.value;
+        if (proto === 'anthropic') {
+          el.auth.placeholder = 'x-api-key: sk-ant-xxx... (Anthropic 密钥，直接粘贴密钥即可)';
+        } else {
+          el.auth.placeholder = 'Authorization: Bearer sk-xxx... (直接粘贴密钥即可，自动添加 Bearer 前缀)';
+        }
+        // Also update config-msg hint
+        const msgEl = document.getElementById('config-msg');
+        if (msgEl) {
+          if (proto === 'anthropic') {
+            msgEl.textContent = '🌲 Anthropic 协议：使用 POST /v1/messages + x-api-key 请求头';
+            msgEl.className = 'msg msg-info';
+          } else {
+            msgEl.textContent = '🧠 OpenAI 协议：使用 POST /v1/chat/completions + Authorization 请求头';
+            msgEl.className = 'msg msg-info';
+          }
+        }
+      }
+
+      el.protocol.addEventListener('change', function() {
+        STATE.protocol = el.protocol.value;
+        updateProtocolUI();
+        // Auto-save config so protocol is remembered
+        saveConfig();
+      });
+
+      // ============================================================
       //  Init
       // ============================================================
       loadConfig();
+      updateProtocolUI();
       loadHistory();
       renderHistory();
 

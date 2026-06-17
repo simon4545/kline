@@ -5,182 +5,643 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Binance Position Terminal（静态版）</title>
     <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:#0f1720; color:#e6edf3; margin:0; }
-      .container { max-width:1100px; margin:28px auto; padding:20px; }
-      header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-      h1 { margin:0; font-size:20px; }
-      .sub { color:#9aa4b2; font-size:13px; }
-      .card { background:#0b1220; border:1px solid #172033; padding:16px; border-radius:8px; margin-top:18px; }
-      table { width:100%; border-collapse:collapse; margin-top:8px; }
-      th,td { text-align:left; padding:8px; border-bottom:1px dashed #12202a; font-size:13px; }
-      .muted { color:#7f8a94; font-size:13px; }
-      .small { font-size:12px; }
-      .btn { background:#2563eb; color:#fff; padding:8px 12px; border-radius:6px; border:none; cursor:pointer; }
+      /* ===== Reset & Base ===== */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html { font-size: 14px; scroll-behavior: smooth; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+        background: linear-gradient(135deg, #0a0e1a 0%, #0f1720 50%, #0a0e1a 100%);
+        color: #e2e8f0;
+        min-height: 100vh;
+        line-height: 1.6;
+      }
+
+      /* ===== Scrollbar ===== */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #0f1720; }
+      ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+      /* ===== Container ===== */
+      .container {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 32px 24px 48px;
+      }
+
+      /* ===== Header ===== */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding-bottom: 28px;
+        border-bottom: 1px solid rgba(30, 41, 59, 0.6);
+        margin-bottom: 28px;
+      }
+      .header-left { display: flex; align-items: center; gap: 14px; }
+      .header-icon {
+        width: 42px; height: 42px;
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+      }
+      .header-text h1 {
+        font-size: 20px;
+        font-weight: 700;
+        color: #f1f5f9;
+        letter-spacing: 0.3px;
+      }
+      .header-text .sub {
+        font-size: 12px;
+        color: #64748b;
+        margin-top: 1px;
+      }
+      .header-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        border-radius: 20px;
+        font-size: 11px;
+        color: #34d399;
+        font-weight: 500;
+      }
+      .header-badge .dot {
+        width: 6px; height: 6px;
+        background: #10b981;
+        border-radius: 50%;
+        animation: pulse-dot 2s ease-in-out infinite;
+      }
+      @keyframes pulse-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+
+      /* ===== Card ===== */
+      .card {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(11, 18, 32, 0.95) 100%);
+        border: 1px solid rgba(30, 41, 59, 0.7);
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+        transition: border-color 0.3s, box-shadow 0.3s;
+      }
+      .card:hover {
+        border-color: rgba(59, 130, 246, 0.25);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      }
+      .card-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #e2e8f0;
+        margin-bottom: 4px;
+      }
+      .card-title .icon { font-size: 16px; }
+      .card-desc {
+        font-size: 12px;
+        color: #64748b;
+        margin-bottom: 14px;
+      }
+
+      /* ===== Form Controls ===== */
+      .input-group {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .input-group + .input-group { margin-top: 10px; }
+
+      input[type="text"],
+      input[type="password"],
+      input[type="number"],
+      select {
+        padding: 9px 14px;
+        border-radius: 8px;
+        border: 1px solid rgba(30, 41, 59, 0.8);
+        background: rgba(7, 16, 26, 0.7);
+        color: #e2e8f0;
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+        min-width: 0;
+      }
+      input::placeholder { color: #475569; }
+      input:focus, select:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        background: rgba(7, 16, 26, 0.9);
+      }
+      select {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='%2364748b'%3E%3Cpath d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        padding-right: 32px;
+        cursor: pointer;
+      }
+      select option { background: #0f1720; color: #e2e8f0; }
+
+      .flex-1 { flex: 1; min-width: 140px; }
+      .w-auto { width: auto; }
+
+      /* ===== Buttons ===== */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 9px 18px;
+        border-radius: 8px;
+        border: none;
+        font-size: 13px;
+        font-weight: 500;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+        user-select: none;
+      }
+      .btn:active { transform: scale(0.97); }
+      .btn-primary {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+      }
+      .btn-primary:hover {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4);
+      }
+      .btn-secondary {
+        background: rgba(100, 116, 139, 0.15);
+        color: #94a3b8;
+        border: 1px solid rgba(100, 116, 139, 0.2);
+      }
+      .btn-secondary:hover {
+        background: rgba(100, 116, 139, 0.25);
+        color: #cbd5e1;
+      }
+      .btn-success {
+        background: linear-gradient(135deg, #059669, #047857);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+      }
+      .btn-success:hover {
+        background: linear-gradient(135deg, #10b981, #059669);
+        box-shadow: 0 4px 16px rgba(5, 150, 105, 0.4);
+      }
+      .btn-danger {
+        background: linear-gradient(135deg, #dc2626, #b91c1c);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+      }
+      .btn-danger:hover {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4);
+      }
+      .btn-sm { padding: 6px 14px; font-size: 12px; }
+
+      /* ===== Message / Status ===== */
+      .msg {
+        font-size: 12px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.3s;
+      }
+      .msg-info {
+        background: rgba(59, 130, 246, 0.08);
+        border: 1px solid rgba(59, 130, 246, 0.15);
+        color: #93c5fd;
+      }
+      .msg-success {
+        background: rgba(16, 185, 129, 0.08);
+        border: 1px solid rgba(16, 185, 129, 0.15);
+        color: #6ee7b7;
+      }
+      .msg-error {
+        background: rgba(239, 68, 68, 0.08);
+        border: 1px solid rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+      }
+      .msg-warn {
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px solid rgba(245, 158, 11, 0.15);
+        color: #fcd34d;
+      }
+
+      /* ===== Table ===== */
+      .table-wrap {
+        overflow-x: auto;
+        margin-top: 6px;
+        border-radius: 8px;
+        border: 1px solid rgba(30, 41, 59, 0.5);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      thead {
+        background: rgba(15, 23, 42, 0.6);
+      }
+      th {
+        text-align: left;
+        padding: 10px 14px;
+        font-weight: 600;
+        color: #94a3b8;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 1px solid rgba(30, 41, 59, 0.6);
+        white-space: nowrap;
+      }
+      td {
+        padding: 10px 14px;
+        border-bottom: 1px solid rgba(30, 41, 59, 0.3);
+        color: #cbd5e1;
+      }
+      tr:last-child td { border-bottom: none; }
+      tbody tr {
+        transition: background 0.2s;
+      }
+      tbody tr:hover {
+        background: rgba(59, 130, 246, 0.04);
+      }
+
+      /* ===== Tag badges inside table ===== */
+      .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .tag-long { background: rgba(16, 185, 129, 0.12); color: #34d399; }
+      .tag-short { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+      .tag-buy { background: rgba(16, 185, 129, 0.12); color: #34d399; }
+      .tag-sell { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+      .tag-order { background: rgba(245, 158, 11, 0.12); color: #fbbf24; }
+      .tag-position { background: rgba(59, 130, 246, 0.12); color: #93c5fd; }
+      .tag-partial { background: rgba(245, 158, 11, 0.12); color: #fbbf24; }
+      .tag-pending { background: rgba(100, 116, 139, 0.12); color: #94a3b8; }
+
+      .upl-positive { color: #34d399; font-weight: 500; }
+      .upl-negative { color: #f87171; font-weight: 500; }
+
+      /* ===== Empty state ===== */
+      .empty-state {
+        text-align: center;
+        padding: 32px 16px;
+        color: #475569;
+      }
+      .empty-state .empty-icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+      .empty-state .empty-text { font-size: 13px; }
+
+      /* ===== Footer ===== */
+      footer {
+        text-align: center;
+        margin-top: 32px;
+        padding-top: 20px;
+        border-top: 1px solid rgba(30, 41, 59, 0.4);
+        font-size: 11px;
+        color: #475569;
+        line-height: 1.8;
+      }
+
+      /* ===== Responsive ===== */
+      @media (max-width: 640px) {
+        .container { padding: 20px 16px 32px; }
+        header { flex-direction: column; align-items: flex-start; gap: 10px; }
+        .card { padding: 16px; }
+        .input-group { flex-direction: column; }
+        .input-group .flex-1 { width: 100%; }
+        .btn { width: 100%; justify-content: center; }
+        th, td { padding: 8px 10px; font-size: 12px; }
+      }
+
+      /* ===== Loading spinner ===== */
+      .spinner {
+        display: inline-block;
+        width: 14px; height: 14px;
+        border: 2px solid rgba(255,255,255,0.2);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ===== Fade in ===== */
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .card { animation: fadeIn 0.4s ease-out; }
+      .card:nth-child(2) { animation-delay: 0.05s; }
+      .card:nth-child(3) { animation-delay: 0.1s; }
     </style>
   </head>
   <body>
     <div class="container">
+      <!-- ===== Header ===== -->
       <header>
-        <div>
-          <h1>Binance Position Terminal（静态版）</h1>
-          <div class="sub">简化界面</div>
+        <div class="header-left">
+          <div class="header-icon">⚡</div>
+          <div class="header-text">
+            <h1>Binance Position Terminal</h1>
+            <div class="sub">永续合约 · 静态版管理面板</div>
+          </div>
+        </div>
+        <div class="header-badge">
+          <span class="dot"></span>
+          浏览器本地直连
         </div>
       </header>
 
+      <!-- ===== Card: API 凭证 ===== -->
       <div class="card">
-        <strong>API 凭证 & 模式</strong>
-        <div class="muted small">请在此处本地保存 API Key/Secret（仅保存在本地浏览器）。</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-          <input id="api-key" placeholder="API Key" class="small" style="flex:1; padding:8px; border-radius:6px; border:1px solid #152235; background:#07101a; color:#e6edf3;" />
-          <input id="api-secret" placeholder="API Secret" class="small" style="flex:1; padding:8px; border-radius:6px; border:1px solid #152235; background:#07101a; color:#e6edf3;" />
+        <div class="card-title"><span class="icon">🔑</span> API 凭证 & 模式</div>
+        <div class="card-desc">API Key / Secret 仅保存在本地浏览器，不会上传至任何服务器。</div>
+
+        <div class="input-group">
+          <input id="api-key" type="text" placeholder="API Key" class="flex-1" />
+          <input id="api-secret" type="password" placeholder="API Secret" class="flex-1" />
         </div>
-        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-          <button id="save-creds" class="btn">保存凭证</button>
-          <button id="clear-creds" class="btn" style="background:#9ca3af;">清除凭证</button>
-          <button id="fetch-account" class="btn" style="background:#10b981;">获取持仓</button>
+
+        <div class="input-group">
+          <button id="save-creds" class="btn btn-primary btn-sm">💾 保存凭证</button>
+          <button id="clear-creds" class="btn btn-secondary btn-sm">🗑️ 清除凭证</button>
+          <button id="fetch-account" class="btn btn-success btn-sm">📊 获取持仓</button>
         </div>
-        <div id="cred-msg" class="muted small" style="margin-top:8px;"></div>
+
+        <div id="cred-msg" class="msg msg-info">💡 未检测到本地凭证，处于未登录状态。</div>
       </div>
 
+      <!-- ===== Card: 账户与持仓 ===== -->
       <div class="card">
-        <strong>账户与持仓</strong>
-        <div class="muted small">点击"获取持仓"从币安实时拉取账户持仓（需先保存 API Key/Secret）。</div>
-        <table id="positions-table" style="display:none;">
-          <thead>
-            <tr><th>标的</th><th>类型</th><th>方向</th><th>数量</th><th>开仓/订单价</th><th>当前/委托价</th><th>未实现盈亏/状态</th></tr>
-          </thead>
-          <tbody id="positions-body">
-            <!-- 动态填充 -->
-          </tbody>
-        </table>
-        <div id="no-positions-msg" class="muted small" style="margin-top:8px; display:none;">暂无持仓</div>
+        <div class="card-title"><span class="icon">📦</span> 账户与持仓</div>
+        <div class="card-desc">点击「获取持仓」从币安实时拉取账户持仓与挂单信息。</div>
+
+        <div class="table-wrap" id="table-wrap" style="display:none;">
+          <table id="positions-table">
+            <thead>
+              <tr>
+                <th>标的</th>
+                <th>类型</th>
+                <th>方向</th>
+                <th>数量</th>
+                <th>开仓/订单价</th>
+                <th>当前/委托价</th>
+                <th>未实现盈亏/状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="positions-body"></tbody>
+          </table>
+        </div>
+
+        <div id="no-positions-msg" class="empty-state" style="display:none;">
+          <div class="empty-icon">📭</div>
+          <div class="empty-text">暂无持仓与挂单</div>
+        </div>
       </div>
 
+      <!-- ===== Card: 下单 ===== -->
       <div class="card">
-        <strong>下单（限价订单）</strong>
-        <div class="muted small">使用限价订单模式，手填交易对、数量与限价。</div>
-        <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-          <input id="symbol" placeholder="交易对（如 BTCUSDT）" class="small" style="flex:1; padding:8px; border-radius:6px; border:1px solid #152235; background:#07101a; color:#e6edf3;" />
-          <select id="side" class="small">
-            <option>BUY</option>
-            <option>SELL</option>
+        <div class="card-title"><span class="icon">📈</span> 下单（限价订单）</div>
+        <div class="card-desc">填写交易对、数量与限价，提交限价订单至币安永续合约。</div>
+
+        <div class="input-group">
+          <input id="symbol" type="text" placeholder="交易对（如 BTCUSDT）" class="flex-1" />
+          <select id="side" class="w-auto">
+            <option value="BUY">🟢 BUY（开多/平空）</option>
+            <option value="SELL">🔴 SELL（开空/平多）</option>
           </select>
-          <input id="qty" placeholder="数量" class="small" style="padding:8px; border-radius:6px; border:1px solid #152235; background:#07101a; color:#e6edf3;" />
-          <input id="limit-price" placeholder="限价" class="small" style="padding:8px; border-radius:6px; border:1px solid #152235; background:#07101a; color:#e6edf3;" />
-          <button id="place-order" class="btn">下单</button>
+          <select id="position-side" class="w-auto">
+            <option value="LONG">⬆️ LONG（多头）</option>
+            <option value="SHORT">⬇️ SHORT（空头）</option>
+          </select>
+          <input id="qty" type="text" placeholder="数量" class="flex-1" />
+          <input id="limit-price" type="text" placeholder="限价" class="flex-1" />
+          <button id="place-order" class="btn btn-primary">🚀 下单</button>
         </div>
-        <div id="order-result" class="muted small" style="margin-top:10px;"></div>
+        <div class="card-desc" style="margin-top:8px;font-size:11px;color:#64748b;">
+          💡 双向持仓模式需指定「方向(LONG/SHORT)」；单向持仓模式下请选择「BOTH」。
+        </div>
+
+        <div id="order-result" class="msg" style="display:none;"></div>
       </div>
 
-      <footer class="muted small" style="text-align:center; margin-top:18px;">已移除模块列表: 待买入关注区预警, AI 交易习惯深度诊断与高阶统计报表, AI 大模型习惯诊断书, 平仓收益率追踪曲线, 策略哨兵配置与安全评级, 策略哨兵与突发异动预警流水线。</footer>
+      <!-- ===== Footer ===== -->
+      <footer>
+        © Binance Position Terminal · 数据直连币安永续合约 API
+      </footer>
     </div>
 
     <script>
-      // Helper
+      // ===== Helpers =====
       const byId = id => document.getElementById(id);
+      function fmt(n) { return typeof n === 'number' ? n.toFixed(4) : n; }
 
-      function fmt(n){ return typeof n==='number' ? n.toFixed(4) : n; }
-
-      // Load stored creds
-      function loadCreds(){
-        byId('api-key').value = localStorage.getItem('binance_api_key') || '';
-        byId('api-secret').value = localStorage.getItem('binance_api_secret') || '';
-        const k = byId('api-key').value;
-        byId('cred-msg').textContent = k ? '已加载本地凭证（仅浏览器本地存储）' : '未检测到本地凭证，处于未登录状态。';
+      function showMsg(el, text, type) {
+        el.textContent = text;
+        el.className = 'msg msg-' + type;
+        el.style.display = 'flex';
       }
 
-      // Save / Clear
-      byId('save-creds').addEventListener('click', ()=>{
+      // ===== Load stored creds =====
+      function loadCreds() {
+        const keyEl = byId('api-key');
+        const secEl = byId('api-secret');
+        keyEl.value = localStorage.getItem('binance_api_key') || '';
+        secEl.value = localStorage.getItem('binance_api_secret') || '';
+        const msg = byId('cred-msg');
+        if (keyEl.value) {
+          showMsg(msg, '🔐 已加载本地凭证（仅浏览器本地存储）', 'success');
+        } else {
+          showMsg(msg, '💡 未检测到本地凭证，处于未登录状态。', 'info');
+        }
+      }
+
+      // ===== Save / Clear =====
+      byId('save-creds').addEventListener('click', () => {
         const k = byId('api-key').value.trim();
         const s = byId('api-secret').value.trim();
-        if(!k || !s){ byId('cred-msg').textContent = '请同时填写 API Key 与 API Secret 后保存。'; return; }
+        const msg = byId('cred-msg');
+        if (!k || !s) {
+          showMsg(msg, '⚠️ 请同时填写 API Key 与 API Secret 后保存。', 'warn');
+          return;
+        }
         localStorage.setItem('binance_api_key', k);
         localStorage.setItem('binance_api_secret', s);
-        byId('cred-msg').textContent = '凭证已保存到本地浏览器。';
+        showMsg(msg, '✅ 凭证已保存到本地浏览器。', 'success');
       });
 
-      byId('clear-creds').addEventListener('click', ()=>{
+      byId('clear-creds').addEventListener('click', () => {
         localStorage.removeItem('binance_api_key');
         localStorage.removeItem('binance_api_secret');
-        byId('api-key').value=''; byId('api-secret').value='';
-        byId('cred-msg').textContent = '凭证已清除。';
+        byId('api-key').value = '';
+        byId('api-secret').value = '';
+        showMsg(byId('cred-msg'), '🗑️ 凭证已清除。', 'info');
       });
 
-      // Render positions and open orders
-      function renderPositions(positionList, orderList){
+      // ===== Render positions & orders =====
+      function renderPositions(positionList, orderList) {
         const tbody = byId('positions-body');
-        const table = byId('positions-table');
+        const tableWrap = byId('table-wrap');
         const noMsg = byId('no-positions-msg');
-        tbody.innerHTML='';
-        
-        // Filter positions to only non-zero
+        tbody.innerHTML = '';
+
         const filteredPos = (positionList || []).filter(p => Number(p.positionAmt) !== 0);
-        // Filter orders to only open ones
         const filteredOrders = (orderList || []).filter(o => o.status === 'NEW' || o.status === 'PARTIALLY_FILLED');
-        
-        if(filteredPos.length === 0 && filteredOrders.length === 0){ 
-          table.style.display = 'none';
+
+        if (filteredPos.length === 0 && filteredOrders.length === 0) {
+          tableWrap.style.display = 'none';
           noMsg.style.display = 'block';
-          return; 
+          return;
         }
-        
-        table.style.display = 'table';
+
+        tableWrap.style.display = 'block';
         noMsg.style.display = 'none';
-        
-        // Render positions
+
+        // Positions
         filteredPos.forEach(p => {
-          const direction = (Number(p.positionAmt) > 0) ? 'LONG' : (Number(p.positionAmt) < 0 ? 'SHORT' : 'FLAT');
+          const dir = Number(p.positionAmt) > 0 ? 'LONG' : (Number(p.positionAmt) < 0 ? 'SHORT' : 'FLAT');
           const qty = Math.abs(Number(p.positionAmt));
           const entry = p.entryPrice || p.entry_price || p.entry;
           const mark = p.markPrice || p.mark_price || p.mark || p.currentPrice || p.price;
-          const upl = p.unRealizedProfit!==undefined ? p.unRealizedProfit : p.unrealizedProfit || p.unrealized_profit || 0;
+          const upl = p.unRealizedProfit !== undefined ? p.unRealizedProfit : p.unrealizedProfit || p.unrealized_profit || 0;
+          const uplNum = Number(upl) || 0;
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${p.symbol}</td><td>持仓</td><td>${direction}</td><td>${fmt(qty)}</td><td>${fmt(Number(entry)||0)}</td><td>${fmt(Number(mark)||0)}</td><td>${fmt(Number(upl)||0)}</td>`;
+          tr.innerHTML = `
+            <td><strong>${p.symbol}</strong></td>
+            <td><span class="tag tag-position">持仓</span></td>
+            <td><span class="tag ${dir === 'LONG' ? 'tag-long' : 'tag-short'}">${dir}</span></td>
+            <td>${fmt(qty)}</td>
+            <td>${fmt(Number(entry) || 0)}</td>
+            <td>${fmt(Number(mark) || 0)}</td>
+            <td class="${uplNum >= 0 ? 'upl-positive' : 'upl-negative'}">${uplNum >= 0 ? '+' : ''}${fmt(uplNum)}</td>
+            <td style="color:#475569">—</td>`;
           tbody.appendChild(tr);
         });
-        
-        // Render open orders
+
+        // Open orders
         filteredOrders.forEach(o => {
-          const tr = document.createElement('tr');
           const qty = Number(o.origQty) - Number(o.executedQty);
           const price = Number(o.price);
-          const status = o.status === 'PARTIALLY_FILLED' ? '部分成交' : '未成交';
-          tr.innerHTML = `<td>${o.symbol}</td><td>挂单</td><td>${o.side}</td><td>${fmt(qty)}</td><td>${fmt(price)}</td><td>${fmt(price)}</td><td>${status}</td>`;
+          const isPartial = o.status === 'PARTIALLY_FILLED';
+          const statusText = isPartial ? '部分成交' : '未成交';
+          const ps = o.positionSide || '';
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${o.symbol}</strong></td>
+            <td><span class="tag tag-order">挂单</span></td>
+            <td><span class="tag ${o.side === 'BUY' ? 'tag-buy' : 'tag-sell'}">${o.side}</span></td>
+            <td>${fmt(qty)}</td>
+            <td>${fmt(price)}</td>
+            <td>${fmt(price)}</td>
+            <td><span class="tag ${isPartial ? 'tag-partial' : 'tag-pending'}">${statusText}</span></td>
+            <td><button class="btn btn-danger btn-sm" onclick="cancelOrder('${o.symbol}', ${o.orderId}, '${ps}', this)">✕ 撤销</button></td>`;
           tbody.appendChild(tr);
         });
       }
 
-      // Fetch account / positions / open orders (client-side direct to Binance)
-      byId('fetch-account').addEventListener('click', async ()=>{
-        const msg = byId('cred-msg'); msg.textContent = '正在请求...';
+      // ===== Cancel order =====
+      async function cancelOrder(symbol, orderId, positionSide, btn) {
+        if (!confirm(`确认撤销 ${symbol} 的订单 #${orderId}？`)) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+        try {
+          const apiKey = localStorage.getItem('binance_api_key') || byId('api-key').value.trim();
+          const apiSecret = localStorage.getItem('binance_api_secret') || byId('api-secret').value.trim();
+          if (!apiKey || !apiSecret) { alert('请先保存 API 凭证'); btn.disabled = false; btn.textContent = '✕ 撤销'; return; }
+
+          const params = { symbol, orderId, timestamp: Date.now(), recvWindow: 10000 };
+          if (positionSide && positionSide !== 'BOTH') {
+            params.positionSide = positionSide;
+          }
+
+          const resp = await binanceSignedRequest({
+            method: 'DELETE',
+            base: 'https://fapi.binance.com',
+            endpoint: '/fapi/v1/order',
+            params, apiKey, apiSecret
+          });
+
+          if (resp.code) {
+            alert('撤销失败: ' + (resp.msg || JSON.stringify(resp)));
+            btn.disabled = false;
+            btn.textContent = '✕ 撤销';
+            return;
+          }
+
+          // Mark row as cancelled
+          const tr = btn.closest('tr');
+          tr.style.background = 'rgba(239,68,68,0.08)';
+          tr.style.opacity = '0.4';
+          btn.textContent = '✅ 已撤';
+          btn.className = 'btn btn-sm';
+          btn.style.pointerEvents = 'none';
+
+          byId('cred-msg').textContent = `✅ 订单 #${orderId} (${symbol}) 已撤销。`;
+          byId('cred-msg').className = 'msg msg-success';
+          byId('cred-msg').style.display = 'flex';
+
+          // Auto-refresh after 2s
+          setTimeout(() => byId('fetch-account').click(), 2000);
+        } catch (e) {
+          alert('撤销请求出错: ' + e.message);
+          btn.disabled = false;
+          btn.textContent = '✕ 撤销';
+        }
+      }
+
+      // ===== Fetch account =====
+      byId('fetch-account').addEventListener('click', async () => {
+        const msg = byId('cred-msg');
+        showMsg(msg, '⏳ 正在请求...', 'info');
+
         const apiKey = localStorage.getItem('binance_api_key') || byId('api-key').value.trim();
         const apiSecret = localStorage.getItem('binance_api_secret') || byId('api-secret').value.trim();
-        if(!apiKey || !apiSecret){ msg.textContent = '需要先保存 API Key 与 Secret。'; return; }
+        if (!apiKey || !apiSecret) {
+          showMsg(msg, '⚠️ 需要先保存 API Key 与 Secret。', 'warn');
+          return;
+        }
 
-        try{
+        try {
           const base = 'https://fapi.binance.com';
           const [positionResp, orderResp] = await Promise.all([
-            binanceSignedRequest({ 
-              method:'GET', 
-              base, 
-              endpoint:'/fapi/v2/positionRisk', 
-              params:{ recvWindow:10000, timestamp: Date.now() }, 
-              apiKey, 
-              apiSecret 
+            binanceSignedRequest({
+              method: 'GET', base, endpoint: '/fapi/v2/positionRisk',
+              params: { recvWindow: 10000, timestamp: Date.now() },
+              apiKey, apiSecret
             }),
-            binanceSignedRequest({ 
-              method:'GET', 
-              base, 
-              endpoint:'/fapi/v1/openOrders', 
-              params:{ recvWindow:10000, timestamp: Date.now() }, 
-              apiKey, 
-              apiSecret 
+            binanceSignedRequest({
+              method: 'GET', base, endpoint: '/fapi/v1/openOrders',
+              params: { recvWindow: 10000, timestamp: Date.now() },
+              apiKey, apiSecret
             })
           ]);
-          
-          if(!positionResp){ msg.textContent = '获取持仓失败（无响应）'; return; }
-          if(positionResp.code || positionResp.msg || positionResp.message){ msg.textContent = '获取持仓失败：' + (positionResp.msg||positionResp.message||JSON.stringify(positionResp)); return; }
-          
+
+          if (!positionResp) { showMsg(msg, '❌ 获取持仓失败（无响应）', 'error'); return; }
+          if (positionResp.code || positionResp.msg || positionResp.message) {
+            showMsg(msg, '❌ 获取持仓失败：' + (positionResp.msg || positionResp.message || JSON.stringify(positionResp)), 'error');
+            return;
+          }
+
           const positions = Array.isArray(positionResp) ? positionResp.map(p => ({
             symbol: p.symbol,
             positionAmt: Number(p.positionAmt),
@@ -188,73 +649,86 @@
             markPrice: Number(p.markPrice),
             unRealizedProfit: Number(p.unRealizedProfit)
           })) : [];
-          
+
           const orders = Array.isArray(orderResp) ? orderResp : [];
-          
+
           renderPositions(positions, orders);
-          msg.textContent = '持仓与挂单已更新（来自币安实盘）。';
-        }catch(e){ msg.textContent = '请求出错：' + e.message; }
+          showMsg(msg, '✅ 持仓与挂单已更新（来自币安实盘）。', 'success');
+        } catch (e) {
+          showMsg(msg, '❌ 请求出错：' + e.message, 'error');
+        }
       });
 
-      // Place order (client-side signed request to Binance)
-      byId('place-order').addEventListener('click', async ()=>{
+      // ===== Place order =====
+      byId('place-order').addEventListener('click', async () => {
         const symbol = byId('symbol').value.trim().toUpperCase();
         const side = byId('side').value;
+        const positionSide = byId('position-side').value;
         const qty = byId('qty').value.trim();
         const limitPrice = byId('limit-price').value.trim();
-        const out = byId('order-result'); out.textContent='';
-        if(!symbol){ out.textContent='请输入交易对'; return; }
-        if(!qty){ out.textContent='请输入数量'; return; }
-        if(!limitPrice){ out.textContent='请输入限价'; return; }
+        const out = byId('order-result');
+
+        if (!symbol) { showMsg(out, '⚠️ 请输入交易对', 'warn'); return; }
+        if (!qty) { showMsg(out, '⚠️ 请输入数量', 'warn'); return; }
+        if (!limitPrice) { showMsg(out, '⚠️ 请输入限价', 'warn'); return; }
 
         const apiKey = localStorage.getItem('binance_api_key') || byId('api-key').value.trim();
         const apiSecret = localStorage.getItem('binance_api_secret') || byId('api-secret').value.trim();
-        if(!apiKey || !apiSecret){ out.textContent = '请先保存 API 凭证。'; return; }
+        if (!apiKey || !apiSecret) { showMsg(out, '⚠️ 请先保存 API 凭证。', 'warn'); return; }
 
-        try{
-          out.textContent = '下单中...';
+        try {
+          showMsg(out, '⏳ 下单中...', 'info');
           const base = 'https://fapi.binance.com';
-          const params = { symbol, side, type: 'LIMIT', quantity: qty, price: limitPrice, timeInForce: 'GTC', timestamp: Date.now(), recvWindow: 10000 };
-          const resp = await binanceSignedRequest({ method:'POST', base, endpoint:'/fapi/v1/order', params, apiKey, apiSecret });
-          if(!resp){ out.textContent = '下单失败（无响应）'; return; }
-          if(resp.code || resp.msg || resp.message){ out.textContent = '下单失败: ' + (resp.msg || resp.message || JSON.stringify(resp)); return; }
-          out.textContent = '下单成功: ' + JSON.stringify(resp);
-          // refresh positions briefly
+          const params = {
+            symbol, side, positionSide, type: 'LIMIT',
+            quantity: qty, price: limitPrice,
+            timeInForce: 'GTC',
+            timestamp: Date.now(), recvWindow: 10000
+          };
+          const resp = await binanceSignedRequest({ method: 'POST', base, endpoint: '/fapi/v1/order', params, apiKey, apiSecret });
+          if (!resp) { showMsg(out, '❌ 下单失败（无响应）', 'error'); return; }
+          if (resp.code || resp.msg || resp.message) {
+            showMsg(out, '❌ 下单失败: ' + (resp.msg || resp.message || JSON.stringify(resp)), 'error');
+            return;
+          }
+          showMsg(out, '✅ 下单成功！订单 ID: ' + (resp.orderId || '—'), 'success');
           setTimeout(() => byId('fetch-account').click(), 1500);
-        }catch(e){ out.textContent = '下单请求出错：' + e.message; }
+        } catch (e) {
+          showMsg(out, '❌ 下单请求出错：' + e.message, 'error');
+        }
       });
 
-      // HMAC helper using Web Crypto
+      // ===== HMAC helper =====
       async function hmacSignHex(secret, message) {
         const enc = new TextEncoder();
         const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
         const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
-        return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,'0')).join('');
+        return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
       }
 
-      // Perform signed request to Binance Futures API directly from browser
-      async function binanceSignedRequest({ method='GET', base, endpoint, params={}, apiKey, apiSecret }){
-        // Build query string
+      // ===== Signed request =====
+      async function binanceSignedRequest({ method = 'GET', base, endpoint, params = {}, apiKey, apiSecret }) {
         const qs = new URLSearchParams();
         Object.keys(params).forEach(k => qs.append(k, String(params[k])));
         const paramString = qs.toString();
         const signature = await hmacSignHex(apiSecret, paramString);
         const finalQs = paramString ? (paramString + '&signature=' + signature) : ('signature=' + signature);
 
-        if(method === 'GET'){
-          const url = base + endpoint + '?' + finalQs;
-          const res = await fetch(url, { headers: { 'X-MBX-APIKEY': apiKey } });
+        if (method === 'GET') {
+          const res = await fetch(base + endpoint + '?' + finalQs, { headers: { 'X-MBX-APIKEY': apiKey } });
           return await res.json();
         } else {
-          const url = base + endpoint;
-          const res = await fetch(url, { method:'POST', headers: { 'X-MBX-APIKEY': apiKey, 'Content-Type':'application/x-www-form-urlencoded' }, body: finalQs });
+          const res = await fetch(base + endpoint, {
+            method,
+            headers: { 'X-MBX-APIKEY': apiKey, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: finalQs
+          });
           return await res.json();
         }
       }
 
-      // init
+      // ===== Init =====
       loadCreds();
     </script>
   </body>
 </html>
-

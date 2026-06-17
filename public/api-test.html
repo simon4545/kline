@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>API 模型测试工具</title>
+    <link rel="stylesheet" href="static/auto.css" />
+    <style>
+      /* ===== Page-specific overrides ===== */
+      .model-id {
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 12px;
+        word-break: break-all;
+      }
+      .test-btn {
+        padding: 4px 12px !important;
+        font-size: 11px !important;
+      }
+      .test-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+      .result-box {
+        background: rgba(7, 16, 26, 0.7);
+        border: 1px solid rgba(30, 41, 59, 0.6);
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin-top: 10px;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 12px;
+        line-height: 1.7;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 360px;
+        overflow-y: auto;
+        display: none;
+      }
+      .result-box.show { display: block; }
+      .result-box .label {
+        color: #64748b;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+      .result-box .label.ok { color: #34d399; }
+      .result-box .label.err { color: #f87171; }
+      .result-box .content { color: #cbd5e1; }
+      .result-box .content .highlight { color: #93c5fd; }
+      .result-box .content .highlight-green { color: #34d399; }
+      .result-box .content .highlight-red { color: #f87171; }
+      .badge-count {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .badge-count.ok {
+        background: rgba(16, 185, 129, 0.12);
+        color: #34d399;
+      }
+      .badge-count.zero {
+        background: rgba(100, 116, 139, 0.12);
+        color: #94a3b8;
+      }
+      .badge-count.err {
+        background: rgba(239, 68, 68, 0.12);
+        color: #f87171;
+      }
+      .empty-model-msg {
+        text-align: center;
+        padding: 28px 16px;
+        color: #475569;
+      }
+      .empty-model-msg .icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+      .empty-model-msg .text { font-size: 13px; }
+      .search-box {
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(30, 41, 59, 0.8);
+        background: rgba(7, 16, 26, 0.7);
+        color: #e2e8f0;
+        font-size: 12px;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.25s;
+        min-width: 160px;
+        flex: 1;
+      }
+      .search-box:focus {
+        border-color: #3b82f6;
+      }
+      .search-box::placeholder { color: #475569; }
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .toolbar .hint {
+        font-size: 11px;
+        color: #64748b;
+      }
+      .inline-status {
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn-group {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .col-id { min-width: 200px; }
+      .col-actions { min-width: 80px; text-align: center; }
+      .col-owned { min-width: 100px; }
+      .status-dot {
+        display: inline-block;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        margin-right: 4px;
+        animation: spin 0.6s linear infinite;
+        border: 2px solid rgba(255,255,255,0.2);
+        border-top-color: #3b82f6;
+      }
+      .status-dot.success { animation: none; background: #10b981; border: none; width: 8px; height: 8px; }
+      .status-dot.error { animation: none; background: #ef4444; border: none; width: 8px; height: 8px; }
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid rgba(30, 41, 59, 0.4);
+        padding-bottom: 0;
+      }
+      .tab {
+        padding: 8px 16px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #64748b;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+        user-select: none;
+      }
+      .tab:hover { color: #94a3b8; }
+      .tab.active {
+        color: #60a5fa;
+        border-bottom-color: #3b82f6;
+      }
+
+      /* Skeleton loading */
+      @keyframes shimmer {
+        0% { background-position: -200px 0; }
+        100% { background-position: 200px 0; }
+      }
+      .skeleton {
+        background: linear-gradient(90deg, rgba(30,41,59,0.4) 25%, rgba(30,41,59,0.7) 50%, rgba(30,41,59,0.4) 75%);
+        background-size: 400px 100%;
+        animation: shimmer 1.5s ease-in-out infinite;
+        border-radius: 4px;
+        height: 14px;
+        margin: 6px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- ===== Header ===== -->
+      <header>
+        <div class="header-left">
+          <div class="header-icon">🧪</div>
+          <div class="header-text">
+            <h1>API 模型测试工具</h1>
+            <div class="sub">OpenAI 兼容接口 · 模型探测 & 连通性测试</div>
+          </div>
+        </div>
+        <div class="header-badge">
+          <span class="dot"></span>
+          浏览器直连
+        </div>
+      </header>
+
+      <!-- ===== Card 1: API 配置 ===== -->
+      <div class="card">
+        <div class="card-title"><span class="icon">🔌</span> API 连接配置</div>
+        <div class="card-desc">填写 API 根地址与 Authorization 密钥（仅保存在本地浏览器，不会上传）。</div>
+
+        <div class="input-group">
+          <input id="api-url" type="text" placeholder="API 地址，如 https://aiapi.up.railway.app" class="flex-1" value="https://aiapi.up.railway.app" />
+          <input id="api-auth" type="password" placeholder="Authorization: Bearer sk-xxx..." class="flex-1" value="sk-" />
+        </div>
+
+        <div class="btn-group" style="margin-top:10px;">
+          <button id="fetch-models" class="btn btn-primary btn-sm">📋 获取模型列表</button>
+          <button id="save-config" class="btn btn-secondary btn-sm">💾 保存配置</button>
+          <button id="clear-config" class="btn btn-secondary btn-sm">🗑️ 清除配置</button>
+        </div>
+
+        <div id="config-msg" class="msg msg-info" style="margin-top:10px;">💡 填写 API 地址和密钥后，点击「获取模型列表」。</div>
+      </div>
+
+      <!-- ===== Card 2: 模型列表 ===== -->
+      <div class="card">
+        <div class="card-title"><span class="icon">📦</span> 可用模型</div>
+        <div class="card-desc">以下为当前密钥可调用的模型列表。点击「测试」发送一条 Hello 消息验证连通性。</div>
+
+        <div class="toolbar" id="model-toolbar" style="display:none;">
+          <input id="model-search" class="search-box" type="text" placeholder="🔍 搜索模型名称..." />
+          <span id="model-count" class="badge-count ok">0 个模型</span>
+          <span class="hint">点击表头列可排序</span>
+        </div>
+
+        <div id="model-empty" class="empty-model-msg">
+          <div class="icon">📭</div>
+          <div class="text">尚未获取模型列表，请先配置 API 信息并点击「获取模型列表」</div>
+        </div>
+
+        <div id="model-table-wrap" class="table-wrap" style="display:none;">
+          <table id="model-table">
+            <thead>
+              <tr>
+                <th class="col-id" data-sort="id" style="cursor:pointer;">模型 ID ↕</th>
+                <th class="col-owned" data-sort="owned_by" style="cursor:pointer;">所属 ↕</th>
+                <th class="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody id="model-tbody"></tbody>
+          </table>
+        </div>
+
+        <div id="model-loading" style="display:none; padding:20px 0; text-align:center;">
+          <span class="spinner" style="width:20px;height:20px;border-width:2px;border-color:rgba(59,130,246,0.2);border-top-color:#3b82f6;"></span>
+          <div style="font-size:13px;color:#64748b;margin-top:8px;">正在拉取模型列表...</div>
+        </div>
+      </div>
+
+      <!-- ===== Card 3: 测试结果 ===== -->
+      <div class="card" id="result-card" style="display:none;">
+        <div class="card-title"><span class="icon">📋</span> 测试结果</div>
+        <div class="card-desc" id="result-desc">最近一次 Hello 测试的响应详情。</div>
+
+        <div id="result-area"></div>
+      </div>
+
+      <!-- ===== Card: 全部测试历史 ===== -->
+      <div class="card" id="history-card" style="display:none;">
+        <div class="card-title"><span class="icon">📜</span> 测试历史</div>
+        <div class="card-desc">所有模型的 Hello 测试记录汇总。</div>
+
+        <div id="history-empty" class="empty-model-msg">
+          <div class="icon">📭</div>
+          <div class="text">暂无测试记录</div>
+        </div>
+
+        <div id="history-table-wrap" class="table-wrap" style="display:none;">
+          <table id="history-table">
+            <thead>
+              <tr>
+                <th>模型</th>
+                <th>状态</th>
+                <th>响应 / 错误</th>
+                <th>耗时</th>
+                <th>时间</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <footer>
+        API 模型测试工具 · 所有数据仅保存在本地浏览器 · 不会上传至任何服务器
+      </footer>
+    </div>
+
+    <script>
+      // ============================================================
+      //  State
+      // ============================================================
+      const STATE = {
+        models: [],           // full model list from API
+        history: [],          // test history
+        testing: new Set(),   // model IDs currently being tested
+        sortKey: 'id',
+        sortAsc: true,
+        configKey: 'api_test_config',
+        historyKey: 'api_test_history',
+      };
+
+      // ============================================================
+      //  DOM refs
+      // ============================================================
+      const $ = (id) => document.getElementById(id);
+      const el = {
+        url:        $('api-url'),
+        auth:       $('api-auth'),
+        fetchBtn:   $('fetch-models'),
+        saveBtn:    $('save-config'),
+        clearBtn:   $('clear-config'),
+        configMsg:  $('config-msg'),
+
+        toolbar:    $('model-toolbar'),
+        search:     $('model-search'),
+        count:      $('model-count'),
+        empty:      $('model-empty'),
+        tableWrap:  $('model-table-wrap'),
+        tbody:      $('model-tbody'),
+        loading:    $('model-loading'),
+
+        resultCard: $('result-card'),
+        resultDesc: $('result-desc'),
+        resultArea: $('result-area'),
+
+        historyCard: $('history-card'),
+        historyEmpty: $('history-empty'),
+        historyWrap:  $('history-table-wrap'),
+        historyTbody: $('history-tbody'),
+      };
+
+      // ============================================================
+      //  Persistence
+      // ============================================================
+      function loadConfig() {
+        try {
+          const raw = localStorage.getItem(STATE.configKey);
+          if (raw) {
+            const cfg = JSON.parse(raw);
+            if (cfg.url) el.url.value = cfg.url;
+            if (cfg.auth) el.auth.value = cfg.auth;
+          }
+        } catch (_) { /* ignore */ }
+      }
+      function saveConfig() {
+        localStorage.setItem(STATE.configKey, JSON.stringify({
+          url: el.url.value.trim(),
+          auth: el.auth.value.trim(),
+        }));
+        showMsg('config-msg', '✅ 配置已保存到本地浏览器', 'success');
+      }
+      function clearConfig() {
+        localStorage.removeItem(STATE.configKey);
+        el.url.value = 'https://aiapi.up.railway.app';
+        el.auth.value = '';
+        showMsg('config-msg', '🗑️ 配置已清除', 'info');
+      }
+
+      function loadHistory() {
+        try {
+          const raw = localStorage.getItem(STATE.historyKey);
+          if (raw) STATE.history = JSON.parse(raw);
+          else STATE.history = [];
+        } catch (_) { STATE.history = []; }
+      }
+      function saveHistory() {
+        localStorage.setItem(STATE.historyKey, JSON.stringify(STATE.history));
+      }
+
+      // ============================================================
+      //  Helpers
+      // ============================================================
+      function showMsg(id, text, type) {
+        const el_ = document.getElementById(id);
+        if (!el_) return;
+        el_.textContent = text;
+        el_.className = 'msg msg-' + (type || 'info');
+      }
+
+      function getBaseUrl() {
+        let url = el.url.value.trim();
+        if (!url) throw new Error('请填写 API 地址');
+        url = url.replace(/\/+$/, ''); // trailing slash
+        return url;
+      }
+      function getAuthHeader() {
+        let auth = el.auth.value.trim();
+        if (!auth) throw new Error('请填写 Authorization');
+        // Auto-prepend "Bearer " if user only pasted the key
+        if (!auth.startsWith('Bearer ') && !auth.startsWith('bearer ')) {
+          auth = 'Bearer ' + auth;
+        }
+        return auth;
+      }
+      function getHeaders() {
+        const auth = getAuthHeader();
+        return {
+          'Content-Type': 'application/json',
+          'Authorization': auth,
+        };
+      }
+
+      function formatTime(ms) {
+        if (ms < 1000) return ms.toFixed(0) + 'ms';
+        if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+        return (ms / 60000).toFixed(1) + 'min';
+      }
+
+      function nowISO() {
+        return new Date().toLocaleString('zh-CN', { hour12: false });
+      }
+
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      // ============================================================
+      //  Fetch models
+      // ============================================================
+      async function fetchModels() {
+        const baseUrl = getBaseUrl();
+        const headers = getHeaders();
+        const url = baseUrl + '/v1/models';
+
+        // Show loading
+        el.loading.style.display = 'block';
+        el.empty.style.display = 'none';
+        el.tableWrap.style.display = 'none';
+        el.toolbar.style.display = 'none';
+        showMsg('config-msg', '⏳ 正在拉取模型列表...', 'info');
+
+        try {
+          const resp = await fetch(url, { headers });
+          if (!resp.ok) {
+            const txt = await resp.text().catch(() => '');
+            throw new Error(`HTTP ${resp.status}${txt ? ': ' + txt.slice(0, 200) : ''}`);
+          }
+          const data = await resp.json();
+          STATE.models = (data.data || data.models || []).filter(m => m && m.id);
+
+          // Sort default
+          STATE.sortKey = 'id';
+          STATE.sortAsc = true;
+          sortModels();
+
+          renderModelTable();
+          el.loading.style.display = 'none';
+          el.toolbar.style.display = 'flex';
+          el.empty.style.display = 'none';
+          el.tableWrap.style.display = 'block';
+          showMsg('config-msg', `✅ 成功拉取 ${STATE.models.length} 个模型`, 'success');
+        } catch (err) {
+          el.loading.style.display = 'none';
+          el.empty.style.display = 'block';
+          el.empty.innerHTML = `
+            <div class="icon">⚠️</div>
+            <div class="text">拉取失败：${escapeHtml(err.message)}</div>
+          `;
+          showMsg('config-msg', '❌ ' + err.message, 'error');
+        }
+      }
+
+      // ============================================================
+      //  Sort & render models
+      // ============================================================
+      function sortModels() {
+        const key = STATE.sortKey;
+        const asc = STATE.sortAsc;
+        STATE.models.sort((a, b) => {
+          const va = (a[key] || '').toLowerCase();
+          const vb = (b[key] || '').toLowerCase();
+          if (va < vb) return asc ? -1 : 1;
+          if (va > vb) return asc ? 1 : -1;
+          return 0;
+        });
+      }
+
+      function renderModelTable() {
+        const query = el.search.value.trim().toLowerCase();
+        const filtered = query
+          ? STATE.models.filter(m => m.id.toLowerCase().includes(query))
+          : STATE.models;
+
+        el.count.textContent = filtered.length + ' / ' + STATE.models.length + ' 个模型';
+        el.count.className = 'badge-count ' + (filtered.length > 0 ? 'ok' : 'zero');
+
+        if (filtered.length === 0) {
+          el.tbody.innerHTML = `
+            <tr><td colspan="3" style="text-align:center;color:#64748b;padding:28px;">
+              ${query ? '没有匹配的模型' : '暂无模型数据'}
+            </td></tr>
+          `;
+          return;
+        }
+
+        let html = '';
+        for (const m of filtered) {
+          const isTesting = STATE.testing.has(m.id);
+          html += `
+            <tr data-model-id="${escapeHtml(m.id)}">
+              <td class="model-id">
+                ${escapeHtml(m.id)}
+                ${m.created ? '<br><span style="font-size:10px;color:#475569;">created: ' + new Date(m.created * 1000).toLocaleDateString('zh-CN') + '</span>' : ''}
+              </td>
+              <td style="font-size:12px;color:#94a3b8;">${escapeHtml(m.owned_by || '—')}</td>
+              <td class="col-actions">
+                <button class="btn btn-success test-btn" data-model="${escapeHtml(m.id)}" ${isTesting ? 'disabled' : ''}>
+                  ${isTesting ? '<span class="spinner"></span>' : '▶'} 测试
+                </button>
+              </td>
+            </tr>
+          `;
+        }
+        el.tbody.innerHTML = html;
+
+        // Attach test listeners
+        el.tbody.querySelectorAll('.test-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const modelId = btn.dataset.model;
+            testModel(modelId);
+          });
+        });
+      }
+
+      // ============================================================
+      //  Test a model (send Hello)
+      // ============================================================
+      async function testModel(modelId) {
+        if (STATE.testing.has(modelId)) return;
+        STATE.testing.add(modelId);
+        renderModelTable();
+
+        const baseUrl = getBaseUrl();
+        const headers = getHeaders();
+        const startTime = performance.now();
+        const record = { model: modelId, status: 'testing', response: '', error: '', duration: 0, time: nowISO() };
+
+        try {
+          const resp = await fetch(baseUrl + '/v1/chat/completions', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              model: modelId,
+              messages: [{ role: 'user', content: 'Hello!' }],
+            }),
+          });
+
+          const duration = performance.now() - startTime;
+          record.duration = duration;
+
+          if (!resp.ok) {
+            const txt = await resp.text().catch(() => '');
+            const errMsg = `HTTP ${resp.status}${txt ? ': ' + txt.slice(0, 500) : ''}`;
+            record.status = 'error';
+            record.error = errMsg;
+            showTestResult(modelId, 'error', errMsg, duration);
+          } else {
+            const data = await resp.json();
+            record.status = 'success';
+            record.response = JSON.stringify(data, null, 2);
+            showTestResult(modelId, 'success', data, duration);
+          }
+        } catch (err) {
+          const duration = performance.now() - startTime;
+          record.duration = duration;
+          record.status = 'error';
+          record.error = err.message;
+          showTestResult(modelId, 'error', err.message, duration);
+        }
+
+        STATE.testing.delete(modelId);
+        renderModelTable();
+
+        // Add to history
+        STATE.history.unshift(record);
+        if (STATE.history.length > 200) STATE.history = STATE.history.slice(0, 200);
+        saveHistory();
+        renderHistory();
+      }
+
+      // ============================================================
+      //  Show test result
+      // ============================================================
+      function showTestResult(modelId, status, data, duration) {
+        el.resultCard.style.display = 'block';
+        el.resultDesc.textContent = `模型「${modelId}」测试 ${status === 'success' ? '成功 ✅' : '失败 ❌'} · 耗时 ${formatTime(duration)}`;
+
+        let html = '';
+        if (status === 'success') {
+          // Extract the reply content if it's a chat completion response
+          let reply = '';
+          let usage = null;
+          if (data.choices && data.choices.length > 0) {
+            const choice = data.choices[0];
+            reply = choice.message?.content || choice.text || JSON.stringify(choice);
+            usage = data.usage;
+          }
+
+          html += '<div class="result-box show">';
+          html += '<div class="label ok">✅ 响应内容</div>';
+          html += '<div class="content">' + escapeHtml(reply) + '</div>';
+          if (usage) {
+            html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(30,41,59,0.4);">';
+            html += '<span style="color:#64748b;font-size:11px;">Token 用量：</span>';
+            html += '<span class="highlight">' + (usage.prompt_tokens || '?') + '</span> 输入 → ';
+            html += '<span class="highlight-green">' + (usage.completion_tokens || '?') + '</span> 输出 ';
+            html += '<span style="color:#475569;">(总计 ' + (usage.total_tokens || '?') + ')</span>';
+            html += '</div>';
+          }
+          html += '<div style="margin-top:8px;font-size:11px;color:#475569;">';
+          html += '⏱ ' + formatTime(duration);
+          html += '</div>';
+          html += '</div>';
+
+          // Also show raw response in collapsible
+          html += '<details style="margin-top:6px;">';
+          html += '<summary style="cursor:pointer;font-size:11px;color:#64748b;user-select:none;">查看原始响应</summary>';
+          html += '<div class="result-box show" style="margin-top:6px;">';
+          html += '<div class="content" style="font-size:11px;">' + escapeHtml(JSON.stringify(data, null, 2)) + '</div>';
+          html += '</div>';
+          html += '</details>';
+        } else {
+          html += '<div class="result-box show">';
+          html += '<div class="label err">❌ 错误</div>';
+          html += '<div class="content" style="color:#f87171;">' + escapeHtml(data) + '</div>';
+          html += '<div style="margin-top:8px;font-size:11px;color:#475569;">';
+          html += '⏱ ' + formatTime(duration);
+          html += '</div>';
+          html += '</div>';
+        }
+
+        el.resultArea.innerHTML = html;
+      }
+
+      // ============================================================
+      //  Render history
+      // ============================================================
+      function renderHistory() {
+        if (STATE.history.length === 0) {
+          el.historyCard.style.display = 'none';
+          return;
+        }
+        el.historyCard.style.display = 'block';
+
+        if (STATE.history.length === 0) {
+          el.historyEmpty.style.display = 'block';
+          el.historyWrap.style.display = 'none';
+          return;
+        }
+        el.historyEmpty.style.display = 'none';
+        el.historyWrap.style.display = 'block';
+
+        let html = '';
+        for (const r of STATE.history) {
+          const isOk = r.status === 'success';
+          let detail = '';
+          if (isOk) {
+            try {
+              const parsed = JSON.parse(r.response);
+              detail = parsed.choices?.[0]?.message?.content || '(empty response)';
+              if (detail.length > 80) detail = detail.slice(0, 80) + '...';
+            } catch {
+              detail = '(response logged)';
+            }
+          } else {
+            detail = r.error;
+            if (detail.length > 80) detail = detail.slice(0, 80) + '...';
+          }
+
+          html += `
+            <tr>
+              <td class="model-id" style="font-size:12px;">${escapeHtml(r.model)}</td>
+              <td>
+                <span class="tag ${isOk ? 'tag-long' : 'tag-sell'}">${isOk ? '✅ 成功' : '❌ 失败'}</span>
+              </td>
+              <td style="font-size:12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${isOk ? '#94a3b8' : '#f87171'}">
+                ${escapeHtml(detail)}
+              </td>
+              <td style="font-size:12px;color:#64748b;">${formatTime(r.duration)}</td>
+              <td style="font-size:11px;color:#475569;">${escapeHtml(r.time)}</td>
+            </tr>
+          `;
+        }
+        el.historyTbody.innerHTML = html;
+      }
+
+      // ============================================================
+      //  Events
+      // ============================================================
+      el.fetchBtn.addEventListener('click', fetchModels);
+
+      el.saveBtn.addEventListener('click', saveConfig);
+      el.clearBtn.addEventListener('click', function() {
+        clearConfig();
+        STATE.models = [];
+        el.tbody.innerHTML = '';
+        el.toolbar.style.display = 'none';
+        el.tableWrap.style.display = 'none';
+        el.empty.style.display = 'block';
+        el.empty.innerHTML = `
+          <div class="icon">📭</div>
+          <div class="text">尚未获取模型列表，请先配置 API 信息并点击「获取模型列表」</div>
+        `;
+      });
+
+      // Search filter
+      el.search.addEventListener('input', renderModelTable);
+
+      // Sort on header click
+      document.querySelectorAll('#model-table th[data-sort]').forEach(th => {
+        th.addEventListener('click', function() {
+          const key = this.dataset.sort;
+          if (STATE.sortKey === key) {
+            STATE.sortAsc = !STATE.sortAsc;
+          } else {
+            STATE.sortKey = key;
+            STATE.sortAsc = true;
+          }
+          sortModels();
+          renderModelTable();
+        });
+      });
+
+      // Enter key to trigger fetch
+      [el.url, el.auth].forEach(inp => {
+        inp.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') fetchModels();
+        });
+      });
+
+      // ============================================================
+      //  Init
+      // ============================================================
+      loadConfig();
+      loadHistory();
+      renderHistory();
+
+      // Auto-fetch if both url and auth are present
+      if (el.url.value.trim() && el.auth.value.trim()) {
+        fetchModels();
+      }
+    </script>
+  </body>
+</html>

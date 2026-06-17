@@ -41,7 +41,8 @@
         </div>
 
         <div class="input-group">
-          <button id="save-creds" class="btn btn-primary btn-sm">💾 保存／新增</button>
+          <button id="new-user-btn" class="btn btn-sm">➕ 新增用户</button>
+          <button id="save-creds" class="btn btn-primary btn-sm">💾 保存</button>
           <button id="delete-user" class="btn btn-danger btn-sm" style="display:none">🗑️ 删除</button>
           <button id="fetch-account" class="btn btn-success btn-sm">📊 获取持仓</button>
         </div>
@@ -236,6 +237,17 @@
       }
 
       byId('user-select').addEventListener('change', onUserSelectChange);
+
+      // ===== New user button: clear selection & inputs =====
+      byId('new-user-btn').addEventListener('click', () => {
+        byId('user-select').value = '';
+        byId('user-name').value = '';
+        byId('api-key').value = '';
+        byId('api-secret').value = '';
+        byId('delete-user').style.display = 'none';
+        byId('user-name').focus();
+        showMsg(byId('cred-msg'), '✏️ 新增用户模式，填写后点击「💾 保存」。', 'info');
+      });
 
       byId('save-creds').addEventListener('click', () => {
         const name = byId('user-name').value.trim() || ('用户 ' + (Date.now() % 10000));

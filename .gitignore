@@ -7,3 +7,13 @@ cache_data
 klines.*
 node_modules
 *.xlsx
+
+# Go 后端代码（worker 分支不需要）
+*.go
+go.mod
+go.sum
+build.sh
+
+# MT5 交易代码（worker 分支不需要）
+*.mq5
+mt5_socket_test.ps1

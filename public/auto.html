@@ -53,7 +53,22 @@
       <!-- ===== Card: 账户与持仓 ===== -->
       <div class="card">
         <div class="card-title"><span class="icon">📦</span> 账户与持仓</div>
-        <div class="card-desc">点击「获取持仓」从币安实时拉取账户持仓与挂单信息。</div>
+        <div class="card-desc">点击「获取持仓」从币安实时拉取账户余额、持仓与挂单信息。</div>
+
+        <div id="balance-info" class="balance-info" style="display:none;">
+          <div class="balance-item">
+            <span class="balance-label">💰 账户余额 (USDT)</span>
+            <span id="balance-usdt" class="balance-value">—</span>
+          </div>
+          <div class="balance-item">
+            <span class="balance-label">📊 未实现盈亏</span>
+            <span id="balance-upl" class="balance-value">—</span>
+          </div>
+          <div class="balance-item">
+            <span class="balance-label">💵 钱包余额</span>
+            <span id="balance-wallet" class="balance-value">—</span>
+          </div>
+        </div>
 
         <div class="table-wrap" id="table-wrap" style="display:none;">
           <table id="positions-table">
@@ -63,6 +78,7 @@
                 <th>类型</th>
                 <th>方向</th>
                 <th>数量</th>
+                <th>订单金额(USDT)</th>
                 <th>开仓/订单价</th>
                 <th>当前/委托价</th>
                 <th>未实现盈亏/状态</th>
@@ -360,16 +376,19 @@
             return `<button class="btn btn-success btn-sm tp-btn" onclick="placeTakeProfitOrder('${p.symbol}', '${dir}', '${qtyStr}', '${priceStr}', this)">${label}</button>`;
           }).join('');
 
+          const closeBtnHtml = `<button class="btn btn-danger btn-sm" onclick="closePosition('${p.symbol}', '${dir}', '${trimNumberString(qty)}', this)">⚡ 平仓</button>`;
+
           const tr = document.createElement('tr');
           tr.innerHTML = `
             <td><strong>${p.symbol}</strong></td>
             <td><span class="tag tag-position">持仓</span></td>
             <td><span class="tag ${dir === 'LONG' ? 'tag-long' : 'tag-short'}">${dir}</span></td>
             <td>${fmt(qty)}</td>
+            <td>${fmt(qty * entryNum)}</td>
             <td>${fmt(entryNum)}</td>
             <td>${fmt(Number(mark) || 0)}</td>
             <td class="${uplNum >= 0 ? 'upl-positive' : 'upl-negative'}">${uplNum >= 0 ? '+' : ''}${fmt(uplNum)}</td>
-            <td style="white-space:nowrap">${buttonsHtml}</td>`;
+            <td style="white-space:nowrap">${buttonsHtml} ${closeBtnHtml}</td>`;
           tbody.appendChild(tr);
         });
 
@@ -386,6 +405,7 @@
             <td><span class="tag tag-order">挂单</span></td>
             <td><span class="tag ${o.side === 'BUY' ? 'tag-buy' : 'tag-sell'}">${o.side}</span></td>
             <td>${fmt(qty)}</td>
+            <td>${fmt(qty * price)}</td>
             <td>${fmt(price)}</td>
             <td>${fmt(price)}</td>
             <td><span class="tag ${isPartial ? 'tag-partial' : 'tag-pending'}">${statusText}</span></td>
@@ -465,6 +485,75 @@
         }
       }
 
+      // ===== Close position (one-click) =====
+      async function closePosition(symbol, positionSide, qty, btn) {
+        if (!symbol || !positionSide || !qty || Number(qty) <= 0) {
+          alert('持仓信息不完整，无法平仓');
+          return;
+        }
+
+        const side = positionSide === 'LONG' ? 'SELL' : 'BUY';
+        if (!confirm(`确认一键平仓 ${symbol} ${positionSide} 持仓，数量 ${qty}？`)) return;
+
+        const oldText = btn.textContent;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+
+        try {
+          const creds = getRequiredCreds();
+          if (!creds) { btn.disabled = false; btn.textContent = oldText; return; }
+          const { apiKey, apiSecret } = creds;
+          if (!apiKey || !apiSecret) {
+            alert('请先保存 API 凭证');
+            btn.disabled = false;
+            btn.textContent = oldText;
+            return;
+          }
+
+          const params = {
+            symbol,
+            side,
+            positionSide,
+            type: 'MARKET',
+            quantity: qty,
+            timestamp: Date.now(),
+            recvWindow: 10000
+          };
+
+          const resp = await binanceSignedRequest({
+            method: 'POST',
+            base: 'https://fapi.binance.com',
+            endpoint: '/fapi/v1/order',
+            params,
+            apiKey,
+            apiSecret
+          });
+
+          if (!resp) {
+            alert('平仓失败（无响应）');
+            btn.disabled = false;
+            btn.textContent = oldText;
+            return;
+          }
+          if (resp.code || resp.msg || resp.message) {
+            alert('平仓失败: ' + (resp.msg || resp.message || JSON.stringify(resp)));
+            btn.disabled = false;
+            btn.textContent = oldText;
+            return;
+          }
+
+          btn.textContent = '✅ 已平';
+          btn.className = 'btn btn-sm';
+          btn.style.pointerEvents = 'none';
+          showMsg(byId('cred-msg'), `✅ ${symbol} 一键平仓成功，订单 ID: ${resp.orderId || '—'}。`, 'success');
+          setTimeout(() => byId('fetch-account').click(), 1500);
+        } catch (e) {
+          alert('平仓请求出错: ' + e.message);
+          btn.disabled = false;
+          btn.textContent = oldText;
+        }
+      }
+
       // ===== Cancel order =====
       async function cancelOrder(symbol, orderId, positionSide, btn) {
         if (!confirm(`确认撤销 ${symbol} 的订单 #${orderId}？`)) return;
@@ -517,6 +606,44 @@
         }
       }
 
+      // ===== Render balance =====
+      function renderBalance(balanceList) {
+        const balanceInfo = byId('balance-info');
+        const usdtEl = byId('balance-usdt');
+        const uplEl = byId('balance-upl');
+        const walletEl = byId('balance-wallet');
+
+        if (!balanceList || !Array.isArray(balanceList)) {
+          console.warn('Invalid balance response:', balanceList);
+          balanceInfo.style.display = 'none';
+          return;
+        }
+
+        const usdtBalance = balanceList.find(b => b.asset === 'USDT');
+        if (!usdtBalance) {
+          console.warn('USDT balance not found in response:', balanceList);
+          balanceInfo.style.display = 'none';
+          return;
+        }
+
+        console.log('USDT Balance data:', usdtBalance);
+
+        balanceInfo.style.display = 'flex';
+        // Binance API v2 balance fields:
+        // balance: 总余额, crossWalletBalance: 钱包余额, crossUnPnl: 未实现盈亏
+        const walletBalance = Number(usdtBalance.crossWalletBalance || usdtBalance.balance || 0);
+        const upl = Number(usdtBalance.crossUnPnl || 0);
+        const total = walletBalance + upl;
+
+        usdtEl.textContent = total.toFixed(4);
+        usdtEl.className = 'balance-value ' + (total >= 0 ? 'balance-positive' : 'balance-negative');
+
+        uplEl.textContent = (upl >= 0 ? '+' : '') + upl.toFixed(4);
+        uplEl.className = 'balance-value ' + (upl >= 0 ? 'balance-positive' : 'balance-negative');
+
+        walletEl.textContent = walletBalance.toFixed(4);
+      }
+
       // ===== Fetch account =====
       byId('fetch-account').addEventListener('click', async () => {
         const msg = byId('cred-msg');
@@ -532,7 +659,12 @@
 
         try {
           const base = 'https://fapi.binance.com';
-          const [positionResp, orderResp] = await Promise.all([
+          const [balanceResp, positionResp, orderResp] = await Promise.all([
+            binanceSignedRequest({
+              method: 'GET', base, endpoint: '/fapi/v2/balance',
+              params: { recvWindow: 10000, timestamp: Date.now() },
+              apiKey, apiSecret
+            }),
             binanceSignedRequest({
               method: 'GET', base, endpoint: '/fapi/v2/positionRisk',
               params: { recvWindow: 10000, timestamp: Date.now() },
@@ -544,6 +676,11 @@
               apiKey, apiSecret
             })
           ]);
+
+          // Handle balance response
+          if (balanceResp && !balanceResp.code && !balanceResp.msg && !balanceResp.message) {
+            renderBalance(balanceResp);
+          }
 
           if (!positionResp) { showMsg(msg, '❌ 获取持仓失败（无响应）', 'error'); return; }
           if (positionResp.code || positionResp.msg || positionResp.message) {
@@ -562,7 +699,7 @@
           const orders = Array.isArray(orderResp) ? orderResp : [];
 
           renderPositions(positions, orders);
-          showMsg(msg, '✅ 持仓与挂单已更新（来自币安实盘）。', 'success');
+          showMsg(msg, '✅ 余额、持仓与挂单已更新（来自币安实盘）。', 'success');
         } catch (e) {
           showMsg(msg, '❌ 请求出错：' + e.message, 'error');
         }

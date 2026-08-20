@@ -349,3 +349,34 @@ footer {
 .tp-btn { padding: 4px 8px !important; font-size: 11px !important; margin: 0 2px; }
 .tp-btn:first-child { margin-left: 0; }
 .tp-btn:last-child { margin-right: 0; }
+
+/* ===== Balance info ===== */
+.balance-info {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  background: rgba(7, 16, 26, 0.6);
+  border: 1px solid rgba(30, 41, 59, 0.5);
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+.balance-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+}
+.balance-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.balance-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+.balance-positive { color: #34d399; }
+.balance-negative { color: #f87171; }

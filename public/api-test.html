@@ -239,7 +239,7 @@
 
         <div class="input-group">
           <div style="display:flex;gap:10px;flex-wrap:wrap;width:100%;">
-            <input id="api-url" type="text" placeholder="API 地址，如 https://aiapi.up.railway.app" class="flex-1" value="https://aiapi.up.railway.app" />
+            <input id="api-url" type="text" placeholder="API 地址（含路径），如 https://aiapi.up.railway.app/v1" class="flex-1" value="https://aiapi.up.railway.app" />
             <select id="api-protocol" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(30,41,59,0.8);background:rgba(7,16,26,0.7);color:#e2e8f0;font-size:12px;font-family:inherit;outline:none;min-width:120px;cursor:pointer;">
               <option value="openai">🧠 OpenAI (ChatGPT)</option>
               <option value="anthropic">🌲 Anthropic (Claude)</option>
@@ -510,7 +510,7 @@
       async function fetchModels() {
         const baseUrl = getBaseUrl();
         const headers = getHeaders();
-        const url = baseUrl + '/v1/models';
+        const url = baseUrl + '/models';
 
         // Show loading
         el.loading.style.display = 'block';
@@ -642,7 +642,7 @@
 
           if (protocol === 'anthropic') {
             // Anthropic Messages API
-            url = baseUrl + '/v1/messages';
+            url = baseUrl + '/messages';
             body = JSON.stringify({
               model: modelId,
               max_tokens: 1024,
@@ -650,7 +650,7 @@
             });
           } else {
             // OpenAI Chat Completions API
-            url = baseUrl + '/v1/chat/completions';
+            url = baseUrl + '/chat/completions';
             body = JSON.stringify({
               model: modelId,
               messages: [{ role: 'user', content: 'Hello!' }],
@@ -846,7 +846,7 @@
         let lines;
         if (protocol === 'anthropic') {
           const key = auth.replace(/^Bearer\s+/i, '');
-          const apiUrl = baseUrl + '/v1/messages';
+          const apiUrl = baseUrl + '/messages';
           const body = JSON.stringify({
             model: modelId,
             max_tokens: 256,
@@ -868,7 +868,7 @@
           if (!bearer.startsWith('Bearer ') && !bearer.startsWith('bearer ')) {
             bearer = 'Bearer ' + bearer;
           }
-          const apiUrl = baseUrl + '/v1/chat/completions';
+          const apiUrl = baseUrl + '/chat/completions';
           const body = JSON.stringify({
             model: modelId,
             messages: [{ role: 'user', content: 'Hello!' }],
@@ -937,7 +937,7 @@
         let lines;
         if (protocol === 'anthropic') {
           const key = auth.replace(/^Bearer\s+/i, '');
-          const apiUrl = baseUrl + '/v1/models';
+          const apiUrl = baseUrl + '/models';
           lines = [
             '# 🌲 Anthropic 协议 · 获取模型列表',
             '# GET ' + apiUrl,
@@ -952,7 +952,7 @@
           if (!bearer.startsWith('Bearer ') && !bearer.startsWith('bearer ')) {
             bearer = 'Bearer ' + bearer;
           }
-          const apiUrl = baseUrl + '/v1/models';
+          const apiUrl = baseUrl + '/models';
           lines = [
             '# 🧠 OpenAI 协议 · 获取模型列表',
             '# GET ' + apiUrl,
